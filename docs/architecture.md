@@ -1,0 +1,131 @@
+# Architecture
+
+`monitorul.ai` is the public-facing read surface over the Elasticsearch indices produced by [`monitorul-ii`](https://github.com/ciocan/monitorul-ii). This document describes **what the data looks like in ES** and how the app consumes it. The shape is owned by `monitorul-ii`; this doc is a consumer-side summary — the canonical reference is `docs/elasticsearch-indexing.md` in that repo.
+
+## Boundary
+
+```
+  monitorul-ii (Python)                  monitorul.ai (this repo)
+  ─────────────────────                  ────────────────────────
+  scrape PDFs ──▶ markdown ──▶ JSON      Next.js (App Router)
+       │                                       │
+       ▼                                       │  read-only via
+  Elasticsearch  ◀──────────── reads ──────────┘  monitorul_reader
+   `mo-*` aliases                                 API key
+```
+
+- `monitorul-ii` owns the data: scraping, OCR/markdown conversion, structured extraction, linking, embedding, and indexing.
+- This app **only reads** from the `mo-*` indices. It never touches PDFs, markdown, or sidecars on disk.
+- Elasticsearch is a derived projection, not the system of record. URLs published by this app must keep resolving across re-indexes — record identity is minted upstream and stable across schema bumps.
+
+## Indices (grains)
+
+Nine read-aliases under `mo-*`. Each one maps 1:1 to a URL pattern on the site.
+
+| Index alias             | URL shape                                | What it represents                                                         |
+| ----------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| `mo-documents`          | `/mo/<year>/<part>/<issue>`              | One MO issue (envelope: chamber, session date, type, etc.)                 |
+| `mo-agenda-items`       | `/mo/<year>/<part>/<issue>/agenda/<ord>` | One agenda item / debate within a plenary session                          |
+| `mo-speeches`           | `/discurs/<slug>-<short_id>`             | One speech / activity by a single speaker                                  |
+| `mo-votes`              | `/vot/<short_id>`                        | One recorded vote                                                          |
+| `mo-interpellations`    | `/interpelare/<slug>-<short_id>`         | One interpellation (and its response, when present)                        |
+| `mo-questions`          | `/intrebare/<regnum>-<regdate>`          | One written question from the Question Register                            |
+| `mo-committee-meetings` | `/comisie/<committee_id>/<date>`         | One committee meeting (roster, agenda, votes)                              |
+| `mo-reports`            | `/raport/<issuing_body_id>/<year>`       | One annual report from an institutional body                               |
+| `mo-persons`            | `/politicieni/<slug>`                    | One politician (curated registry: parliamentarians, ministers, presidents) |
+
+Why per-grain instead of one mega-index per MO: each grain has a different mapping (speeches need the Romanian text analyzer + dense_vector; votes are mostly numeric; reports are long-form), each gets its own SEO crawl budget, and each is independently re-indexable when only one changes upstream.
+
+## Record identity
+
+Every doc across every grain has a stable `record_id` minted upstream and used directly as the ES `_id`:
+
+| Grain             | `record_id`                        |
+| ----------------- | ---------------------------------- |
+| Document          | `mo://YYYY/PART/ISSUE`             |
+| Agenda item       | `<doc_id>#agenda-<ordinal>`        |
+| Speech            | `<doc_id>#agenda-<ord>#act-<seq>`  |
+| Vote              | `<doc_id>#agenda-<ord>#vote-<seq>` |
+| Interpellation    | `<doc_id>#interp-<num>`            |
+| Question          | `<doc_id>#q-<regnum>`              |
+| Committee meeting | `<doc_id>#cmt-<committee_id>`      |
+| Report            | `<doc_id>`                         |
+| Person            | `<person_slug>`                    |
+
+These IDs survive re-extractions and schema bumps. Pages and ISR cache tags key off them.
+
+## Common fields (every grain)
+
+```jsonc
+{
+  "record_id": "keyword",
+  "document_id": "keyword",
+  "content_fingerprint": "keyword", // sha256[:12] of normalised body — staleness sentinel
+  "indexed_at": "date",
+  "extractor_versions": {
+    /* per-component, dynamic */
+  },
+  "enrichment_versions": {
+    /* per-producer, dynamic */
+  },
+  "schema_version": "keyword",
+}
+```
+
+Per-doc child grains additionally carry `position_in_document: integer` so the playback page can interleave agenda → speeches → votes → … in true source order across grains in a single multi-index search.
+
+## Grain-specific shape (highlights)
+
+The full v1 mappings live in `monitorul-ii`'s `src/monitorul_ii/elasticsearch/mappings/`. The fields the app touches most:
+
+**`mo-speeches`** — the substrate for search.
+
+- `chamber`, `session_date`, `legislature`, `year`, `mo_issue`
+- `agenda_ordinal`, `agenda_title` (text, Romanian analyzer), `agenda_category`, `agenda_outcome`
+- `speaker.{person_id, name_raw, name_search, title, role, party_group_at_time, delivery_mode}`
+- `text` (Romanian analyzer + `text.exact` for phrase queries), `text_length`, `is_substantive` (true when `text_length ≥ 100`)
+- `refs.{bills, laws, codes, ougs, ogs, types, raw}` — flat keyword arrays of cited references
+- `enrichments.{topics, summary, embedding (1024-dim BGE-M3), embedding_text_fingerprint}`
+
+**`mo-persons`** — `canonical_name` (text + folded), `aliases`, `wikidata_qid`, `birth_date`, `mandates[]` (role / chamber / legislature / from / to / party). Curated registry, not sidecar-derived.
+
+**`mo-votes`** — `motion_type`, `voting_method`, `outcome`, `counts.{for, against, abstain}` (int | null | "unanimous"), `timing` (live/deferred), and linker fields `defers_to` / `resolves[]` for paired deferred votes across documents.
+
+**`mo-interpellations`** — `questioner` (Speaker), `addressed_to` + `addressed_to_normalized` (canonical ministry id), `topic`, `question_text`, `response_deferred`, optional `response`.
+
+**`mo-committee-meetings`** — `dates[]`, `time_windows[]`, `format`, `purpose`, `joint_with[]`, `roster[]` (presence + intra-committee role), `agenda[]` with per-item bill cites and outcomes.
+
+**`mo-reports`** — `issuing_body` + `issuing_body_normalized`, `reporting_period.{start, end}`, `received_at`, `headings[]` (level + text), excerpt. Body markdown stays out of ES (reproduced verbatim per spec).
+
+## Query layer
+
+All ES access goes through one server-only module — `lib/search.ts`. No direct ES client in route handlers, no ad-hoc DSL in pages. The function set mirrors the Python `monitorul_ii.elasticsearch.queries` module name-for-name so the LLM-agent layer, the `monitorul-ii query` CLI, and this app all enforce the same guardrails.
+
+Functions (target shape, paraphrased from Q9 of the upstream design doc):
+
+- `searchSpeeches({ q, speakerPersonId, chamber, dateFrom, dateTo, refBills, topics, isSubstantive, page, pageSize, rankFusion })` — multi_match BM25 over `text^2` / `agenda_title^1.5` / `speaker.name_search`, plus optional client-side RRF with kNN over `enrichments.embedding`.
+- `searchSpeechesKnn` — pure kNN ablation; never falls back to BM25.
+- `listDocumentChildren(documentId)` — multi-grain interleave for `/mo/<id>` playback, sorted by `position_in_document` ASC.
+- `getDocument` / `getAgendaItem` / `getSpeech` / `getReport` — single lookup by `record_id`.
+- `listDocumentsByDate(date, chamber?)` / `listCommitteeMeetings(committeeId, dateFrom?)`
+- `personPage(slug)` — composite payload for `/politicieni/<slug>`: person record + recent substantive speeches + party/year stats agg.
+- `searchPersons(q)` — `multi_match` with `operator: and` over `canonical_name` + `aliases`.
+- `aggSpeechesByPartyYear({ year?, chamber? })` — terms agg on `speaker.party_group_at_time × year`.
+
+Hard server-side guardrails baked into the layer (not client suggestions): `pageSize` clamped to 50, `isSubstantive: true` default on public search (chair-procedure boilerplate hidden), `agg` size capped at 100.
+
+## Hybrid search (RRF)
+
+`searchSpeeches({ rankFusion: 'rrf' })` fuses BM25 + kNN client-side. ES native `retrievers.rrf` is Platinum-licensed; we run on basic, so the layer issues two `_search` calls and merges with `Σ 1 / (60 + rank_in_leg)` in JS. The query string is vectorised by hitting the BGE-M3 FastAPI service from [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) (`EMBED_URL`, default `http://127.0.0.1:8000`). If the embed service is unreachable, RRF mode silently degrades to BM25-only.
+
+## Caching and ISR invalidation
+
+- Detail pages → `force-static` with `revalidate: 3600` and `revalidateTag('mo-<grain>:<id>')`.
+- Search results → `Cache-Control: s-maxage=60, stale-while-revalidate=300`.
+- Sitemaps → `force-static`, regenerated nightly.
+
+The Python indexer (`monitorul-ii index`) calls a webhook on every successful upsert with the affected `(grain, record_id)` pairs. This app exposes the receiving route, validates the shared secret, and calls `revalidateTag` for each pair so freshly-indexed records appear without a full rebuild.
+
+## Credentials
+
+Two API keys are minted by `monitorul-ii es-init`. **This app uses only `monitorul_reader`** — read-only on `mo-*`, no scripting, no scroll, no `_sql`, no cluster info. The `monitorul_indexer` key never leaves the Python pipeline.

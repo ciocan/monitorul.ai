@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-07T00:00:00Z",
+  "title": "Design System: monitorul.ai",
+  "extensions": {
+    "colorMeta": {
+      "paper-99": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(0.99 0.005 240)",
+        "purpose": "Page background; the surface the records sit on. Reads as a barely-cool ivory.",
+        "dark": "oklch(0.16 0.012 240)",
+        "tonalRamp": [
+          "oklch(0.16 0.012 240)",
+          "oklch(0.28 0.012 240)",
+          "oklch(0.4 0.01 240)",
+          "oklch(0.52 0.01 240)",
+          "oklch(0.64 0.008 240)",
+          "oklch(0.76 0.008 240)",
+          "oklch(0.88 0.006 240)",
+          "oklch(0.99 0.005 240)"
+        ]
+      },
+      "paper-96": {
+        "role": "neutral",
+        "displayName": "Paper Muted",
+        "canonical": "oklch(0.965 0.006 240)",
+        "purpose": "Aged-paper hue. Muted backgrounds, search filter row, table thead, secondary cards.",
+        "dark": "oklch(0.22 0.012 240)",
+        "tonalRamp": [
+          "oklch(0.18 0.012 240)",
+          "oklch(0.3 0.012 240)",
+          "oklch(0.42 0.01 240)",
+          "oklch(0.54 0.01 240)",
+          "oklch(0.66 0.008 240)",
+          "oklch(0.78 0.008 240)",
+          "oklch(0.9 0.006 240)",
+          "oklch(0.965 0.006 240)"
+        ]
+      },
+      "paper-91": {
+        "role": "neutral",
+        "displayName": "Rule Line",
+        "canonical": "oklch(0.91 0.008 240)",
+        "purpose": "1px hairline that separates records, table rows, sections, and panel groups. The system's primary depth cue. Borrows from print archives.",
+        "dark": "oklch(0.32 0.012 240)",
+        "tonalRamp": [
+          "oklch(0.18 0.012 240)",
+          "oklch(0.3 0.012 240)",
+          "oklch(0.42 0.01 240)",
+          "oklch(0.54 0.01 240)",
+          "oklch(0.66 0.008 240)",
+          "oklch(0.78 0.008 240)",
+          "oklch(0.91 0.008 240)",
+          "oklch(0.99 0.005 240)"
+        ]
+      },
+      "ink-45": {
+        "role": "neutral",
+        "displayName": "Ink Muted",
+        "canonical": "oklch(0.45 0.01 240)",
+        "purpose": "Faded ink for secondary text, dates, metadata, captions, placeholder text.",
+        "dark": "oklch(0.7 0.012 240)",
+        "tonalRamp": [
+          "oklch(0.16 0.012 240)",
+          "oklch(0.28 0.012 240)",
+          "oklch(0.4 0.01 240)",
+          "oklch(0.45 0.01 240)",
+          "oklch(0.55 0.01 240)",
+          "oklch(0.7 0.012 240)",
+          "oklch(0.85 0.008 240)",
+          "oklch(0.99 0.005 240)"
+        ]
+      },
+      "ink-30": {
+        "role": "neutral",
+        "displayName": "Ink Mid",
+        "canonical": "oklch(0.32 0.012 240)",
+        "purpose": "Mid-weight ink. Hover state of primary buttons, body text on muted backgrounds, weighted secondary text.",
+        "dark": "oklch(0.85 0.008 240)"
+      },
+      "ink-16": {
+        "role": "primary",
+        "displayName": "Ink",
+        "canonical": "oklch(0.16 0.012 240)",
+        "purpose": "The color the records are printed in. Body text on light surfaces. Default link color (with underline). Default primary button background.",
+        "dark": "oklch(0.97 0.005 240)",
+        "tonalRamp": [
+          "oklch(0.16 0.012 240)",
+          "oklch(0.28 0.012 240)",
+          "oklch(0.4 0.01 240)",
+          "oklch(0.52 0.01 240)",
+          "oklch(0.64 0.008 240)",
+          "oklch(0.76 0.008 240)",
+          "oklch(0.88 0.006 240)",
+          "oklch(0.99 0.005 240)"
+        ]
+      },
+      "alert-civic": {
+        "role": "tertiary",
+        "displayName": "Alert Civic",
+        "canonical": "oklch(0.55 0.22 25)",
+        "purpose": "A deliberately-cooled red, dialed away from tabloid hot-red. Reserved for destructive button states, error toasts, 'vot respins' outcomes, missing-record warnings. Never decorative.",
+        "dark": "oklch(0.68 0.18 25)",
+        "tonalRamp": [
+          "oklch(0.22 0.08 25)",
+          "oklch(0.33 0.13 25)",
+          "oklch(0.44 0.18 25)",
+          "oklch(0.55 0.22 25)",
+          "oklch(0.66 0.2 25)",
+          "oklch(0.78 0.14 25)",
+          "oklch(0.88 0.08 25)",
+          "oklch(0.95 0.04 25)"
+        ]
+      },
+      "azure-1": {
+        "role": "secondary",
+        "displayName": "Civic Azure 1",
+        "canonical": "oklch(0.828 0.04 235)",
+        "purpose": "Lightest stop in the chart ramp. Background of selected chips, hover backgrounds on link chips.",
+        "dark": "oklch(0.4 0.11 244)"
+      },
+      "azure-2": {
+        "role": "secondary",
+        "displayName": "Civic Azure 2",
+        "canonical": "oklch(0.74 0.09 237)",
+        "purpose": "Second chart stop.",
+        "dark": "oklch(0.5 0.13 242)"
+      },
+      "azure-3": {
+        "role": "secondary",
+        "displayName": "Civic Azure 3",
+        "canonical": "oklch(0.62 0.14 240)",
+        "purpose": "Mid chart stop. Default link hover color, focused input border.",
+        "dark": "oklch(0.62 0.14 240)"
+      },
+      "azure-4": {
+        "role": "secondary",
+        "displayName": "Civic Azure 4",
+        "canonical": "oklch(0.5 0.13 242)",
+        "purpose": "The editorial accent. Used for active filters, focused states, links on hover (sparingly), the citation accent stripe on cited entities. The system's 'one accent' for The One Accent Rule.",
+        "dark": "oklch(0.74 0.09 237)"
+      },
+      "azure-5": {
+        "role": "secondary",
+        "displayName": "Civic Azure 5",
+        "canonical": "oklch(0.4 0.11 244)",
+        "purpose": "Darkest chart stop. Active state of azure chip selections, deep accent on dense charts.",
+        "dark": "oklch(0.828 0.04 235)"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Landing page hero, person profile names on /politicieni/<slug>, document opener title on /mo/<id>. Used at most once per page."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section openers on long-form pages, list-page titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles, search-result row titles, panel headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All running prose, search result snippets, speech text on /discurs/<slug>. Capped at 65-75ch on text-heavy pages."
+      },
+      "label": {
+        "displayName": "Label (uppercase tracked mono)",
+        "purpose": "Section affordances, table headers, filter group labels, breadcrumb separators, button labels. The signature 'uppercase tracked mono' voice."
+      },
+      "doc-heading": {
+        "displayName": "Document Heading",
+        "purpose": "In-document section headings on records (vote panels, agenda items, interpellation sections). Already in use in mdx-components.tsx."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Dates, IDs, fingerprints, technical metadata, citation strings."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-state-hover",
+        "value": "0 1px 0 0 oklch(0.16 0.012 240 / 0.08)",
+        "purpose": "Faint ground-shadow for interactive rows on hover. Vanishes at rest."
+      },
+      {
+        "name": "shadow-focus-ring",
+        "value": "0 0 0 2px oklch(0.5 0.13 242 / 0.4)",
+        "purpose": "Focus ring on inputs, buttons, links. The system's only 'blue glow.'"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-archive",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Default easing for state transitions. Ease-out-quart; no bounce, no elastic."
+      },
+      {
+        "name": "duration-state",
+        "value": "120ms",
+        "purpose": "Standard duration for hover, focus, and active state transitions."
+      },
+      {
+        "name": "duration-page",
+        "value": "200ms",
+        "purpose": "Longer duration for panel reveals, dropdowns, navigation reveals."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The canonical action of a page. Mono uppercase tracked label, sharp corners, ink background.",
+      "html": "<button class=\"ds-btn-primary\">CAUTĂ</button>",
+      "css": ".ds-btn-primary { background: oklch(0.16 0.012 240); color: oklch(0.99 0.005 240); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; line-height: 1.2; padding: 10px 14px; border: none; border-radius: 0; cursor: pointer; transition: background-color 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-primary:hover { background: oklch(0.32 0.012 240); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px oklch(0.5 0.13 242 / 0.4); } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action. Light paper background, ink text, hairline rule border.",
+      "html": "<button class=\"ds-btn-outline\">RESETEAZĂ FILTRE</button>",
+      "css": ".ds-btn-outline { background: oklch(0.99 0.005 240); color: oklch(0.16 0.012 240); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; line-height: 1.2; padding: 10px 14px; border: 1px solid oklch(0.91 0.008 240); border-radius: 0; cursor: pointer; transition: background-color 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-outline:hover { background: oklch(0.965 0.006 240); } .ds-btn-outline:focus-visible { outline: none; box-shadow: 0 0 0 2px oklch(0.5 0.13 242 / 0.4); } .ds-btn-outline:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Tertiary action. Transparent until hovered. Used in dense table-row actions and dropdown triggers.",
+      "html": "<button class=\"ds-btn-ghost\">COPIAZĂ LINK</button>",
+      "css": ".ds-btn-ghost { background: transparent; color: oklch(0.16 0.012 240); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; line-height: 1.2; padding: 10px 14px; border: none; border-radius: 0; cursor: pointer; transition: background-color 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-ghost:hover { background: oklch(0.965 0.006 240); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 2px oklch(0.5 0.13 242 / 0.4); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Label sits above input in mono uppercase tracked. Sharp corners, hairline border, azure focus ring.",
+      "html": "<div class=\"ds-input-group\"><label for=\"q\" class=\"ds-input-label\">CAUTĂ ÎN ARHIVĂ</label><input id=\"q\" class=\"ds-input\" placeholder=\"Nume, partid, lege, an…\" /></div>",
+      "css": ".ds-input-group { display: flex; flex-direction: column; gap: 6px; max-width: 480px; } .ds-input-label { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.45 0.01 240); line-height: 1.2; } .ds-input { background: oklch(0.99 0.005 240); color: oklch(0.16 0.012 240); font-family: 'Public Sans', system-ui, sans-serif; font-size: 15px; font-weight: 400; line-height: 1.55; padding: 10px 12px; border: 1px solid oklch(0.91 0.008 240); border-radius: 0; outline: none; transition: border-color 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-input::placeholder { color: oklch(0.45 0.01 240); font-style: italic; } .ds-input:focus { border-color: oklch(0.5 0.13 242); box-shadow: 0 0 0 2px oklch(0.5 0.13 242 / 0.4); }"
+    },
+    {
+      "name": "Record Card",
+      "kind": "card",
+      "refersTo": "card-record",
+      "description": "List-row record. Mono dateline strip across the top, headline in serif, body excerpt, mono meta. The signature record affordance on search result lists.",
+      "html": "<article class=\"ds-record\"><p class=\"ds-record-dateline\">MO 2024-47 · CAMERA DEPUTAȚILOR · 12 MARTIE 2024</p><h3 class=\"ds-record-title\"><a href=\"#\" class=\"ds-record-link\">Sesiunea plenară din 12 martie 2024</a></h3><p class=\"ds-record-body\">47 vorbitori · 12 voturi · durată 3h 14m. Ordinea de zi a inclus dezbaterea proiectului de buget rectificat și raportul anual al Curții de Conturi.</p><p class=\"ds-record-meta\">/mo/2024/ii/47 · indexat 2024-03-13</p></article>",
+      "css": ".ds-record { display: flex; flex-direction: column; gap: 8px; padding: 16px 0; border-bottom: 1px solid oklch(0.91 0.008 240); transition: background-color 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-record:hover { background: oklch(0.965 0.006 240); box-shadow: 0 1px 0 0 oklch(0.16 0.012 240 / 0.08); } .ds-record-dateline { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.45 0.01 240); margin: 0; line-height: 1.2; } .ds-record-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 22px; font-weight: 400; line-height: 1.15; letter-spacing: -0.005em; color: oklch(0.16 0.012 240); margin: 0; } .ds-record-link { color: inherit; text-decoration: none; } .ds-record:hover .ds-record-link { text-decoration: underline; text-underline-offset: 4px; } .ds-record-body { font-family: 'Public Sans', system-ui, sans-serif; font-size: 15px; font-weight: 400; line-height: 1.55; color: oklch(0.16 0.012 240); margin: 0; max-width: 70ch; } .ds-record-meta { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; font-weight: 400; letter-spacing: 0.04em; color: oklch(0.45 0.01 240); margin: 0; line-height: 1.4; }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-tag",
+      "description": "Filter facet on result lists. Hairline 2px radius (the only place in the system that softens corners). Selected state inverts ink/paper.",
+      "html": "<div class=\"ds-chip-row\"><button class=\"ds-chip ds-chip--selected\">CAMERA DEPUTAȚILOR</button><button class=\"ds-chip\">SENAT</button><button class=\"ds-chip\">2024</button><button class=\"ds-chip\">2023</button></div>",
+      "css": ".ds-chip-row { display: flex; flex-wrap: wrap; gap: 6px; } .ds-chip { background: oklch(0.965 0.006 240); color: oklch(0.32 0.012 240); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; line-height: 1.2; padding: 4px 10px; border: 1px solid oklch(0.91 0.008 240); border-radius: 2px; cursor: pointer; transition: all 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-chip:hover { background: oklch(0.91 0.008 240); } .ds-chip--selected { background: oklch(0.16 0.012 240); color: oklch(0.99 0.005 240); border-color: oklch(0.16 0.012 240); } .ds-chip:focus-visible { outline: none; box-shadow: 0 0 0 2px oklch(0.5 0.13 242 / 0.4); }"
+    },
+    {
+      "name": "Records Table",
+      "kind": "custom",
+      "refersTo": "table",
+      "description": "Tabular numeric data with mono uppercase tracked thead. Vote tallies, person profile mandates, search result tables. Row hover lifts to paper-96.",
+      "html": "<table class=\"ds-table\"><thead><tr><th>DATĂ</th><th>VORBITOR</th><th>PARTID</th><th class=\"ds-table-num\">VOTURI</th></tr></thead><tbody><tr><td class=\"ds-table-meta\">2024-03-12</td><td>Ionescu, Maria</td><td>USR</td><td class=\"ds-table-num\">217</td></tr><tr><td class=\"ds-table-meta\">2024-03-12</td><td>Popescu, Andrei</td><td>PSD</td><td class=\"ds-table-num\">203</td></tr><tr><td class=\"ds-table-meta\">2024-03-12</td><td>Vasilescu, Elena</td><td>PNL</td><td class=\"ds-table-num\">194</td></tr></tbody></table>",
+      "css": ".ds-table { width: 100%; border-collapse: collapse; font-family: 'Public Sans', system-ui, sans-serif; color: oklch(0.16 0.012 240); } .ds-table thead th { background: oklch(0.965 0.006 240); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.45 0.01 240); text-align: left; padding: 10px 12px; border-bottom: 1px solid oklch(0.91 0.008 240); } .ds-table tbody td { font-size: 14px; line-height: 1.4; padding: 10px 12px; border-bottom: 1px solid oklch(0.91 0.008 240); vertical-align: top; } .ds-table tbody tr { transition: background-color 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-table tbody tr:hover { background: oklch(0.965 0.006 240); } .ds-table-num { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; text-align: right; } .ds-table-meta { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: oklch(0.45 0.01 240); letter-spacing: 0.04em; }"
+    },
+    {
+      "name": "Site Navigation",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Single 1px-rule-bottom horizontal bar. Logo in serif at left, mono uppercase menu items at right. Active state is a 2px azure underline, not a fill.",
+      "html": "<nav class=\"ds-nav\"><a href=\"/\" class=\"ds-nav-logo\">monitorul.ai</a><ul class=\"ds-nav-list\"><li><a href=\"#\" class=\"ds-nav-link ds-nav-link--active\">CAUTĂ</a></li><li><a href=\"#\" class=\"ds-nav-link\">SESIUNI</a></li><li><a href=\"#\" class=\"ds-nav-link\">POLITICIENI</a></li><li><a href=\"#\" class=\"ds-nav-link\">DESPRE</a></li></ul></nav>",
+      "css": ".ds-nav { display: flex; align-items: baseline; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid oklch(0.91 0.008 240); background: oklch(0.99 0.005 240); } .ds-nav-logo { font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 400; color: oklch(0.16 0.012 240); text-decoration: none; letter-spacing: -0.005em; } .ds-nav-list { display: flex; gap: 24px; list-style: none; margin: 0; padding: 0; } .ds-nav-link { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.32 0.012 240); text-decoration: none; padding: 4px 0; box-shadow: inset 0 -2px 0 transparent; transition: box-shadow 120ms cubic-bezier(0.22, 1, 0.36, 1), color 120ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-nav-link:hover { color: oklch(0.16 0.012 240); } .ds-nav-link--active { color: oklch(0.16 0.012 240); box-shadow: inset 0 -2px 0 oklch(0.5 0.13 242); }"
+    },
+    {
+      "name": "Dateline (signature)",
+      "kind": "custom",
+      "refersTo": "dateline",
+      "description": "The system's signature affordance. Sets the editorial register on every record-bearing page within three words. Never decorate, never add an icon.",
+      "html": "<p class=\"ds-dateline\">MONITORUL OFICIAL · PARTEA II · CAMERA DEPUTAȚILOR · 12 MARTIE 2024</p>",
+      "css": ".ds-dateline { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: oklch(0.45 0.01 240); line-height: 1.2; margin: 0 0 32px 0; padding-bottom: 8px; border-bottom: 1px solid oklch(0.91 0.008 240); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Public Record",
+    "overview": "monitorul.ai is a parliamentary record archive redesigned as a civic gazette. The visual system reads as a published volume of public record — datelined, citable, formal without being bureaucratic, archival without being austere. It is what Monitorul Oficial would look like if it had been redesigned by an editorial design studio with a brief that said 'respect the reader, respect the records, and disappear.'\n\nEvery page is a document; every chart is a citation; every search result is an entry in a register. Chrome is minimal because the parliamentary record is the protagonist, not the navigation. Headings use a serif voice for narrative surfaces (landing, person profiles, document openings) and a mono voice for in-document section labels (vote outcomes, agenda items, dates) — the two registers signal: here is the public-facing summary, vs. here are the records themselves.\n\nThis system explicitly rejects: the SaaS marketing idiom (gradients, glow, hero-metric template), the government portal idiom (royal blue, accordion-trees, acronym soup), the news partisanship idiom (tabloid red, opinion-mixed-with-fact), and the crypto/hacker idiom (neon-on-black, CRT scanlines, ASCII art). The destination is editorial restraint, not power-user cosplay.",
+    "keyCharacteristics": [
+      "Sharp corners (rounded-none) by default; the hairline 2px radius is reserved for chips and badges only.",
+      "Tinted neutrals on a cool civic axis (hue 240). Pure white and pure black are forbidden.",
+      "Two-register typography: editorial serif (Source Serif 4) for display, mono (IBM Plex Mono) for in-document headings and labels, body sans (Public Sans) for everything else.",
+      "Flat by default; depth comes from rule lines and tonal layering, never decorative shadows.",
+      "Generous whitespace at the page level; dense tabular layout inside records when warranted.",
+      "Uppercase tracked mono labels carry section affordances ('VOTURI · 2024-03-12 · CAMERA DEPUTAȚILOR')."
+    ],
+    "rules": [
+      {
+        "name": "The Cool Axis Rule",
+        "body": "All neutrals tint toward hue 240 with chroma between 0.005 and 0.012. Pure #000 / #fff (or oklch(0 0 0) / oklch(1 0 0)) are forbidden. Even when a token reads as 'white,' it is Paper-99 and carries the cool drift.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Accent Rule",
+        "body": "Civic Azure is used on ≤ 10% of any single screen. Its rarity is the point. If two distinct UI elements would both want azure, one of them is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Decorative Color Rule",
+        "body": "No color exists for tone or warmth. If a color appears on screen, it is doing semantic work: data, link, citation, alert, or selection. Removing the color would damage comprehension.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Register Rule",
+        "body": "Source Serif 4 voices the human-facing surface (landing, hero, profile names, openers). IBM Plex Mono voices the record-facing surface (in-document headings, dates, IDs, table labels). Public Sans voices everything else.",
+        "section": "typography"
+      },
+      {
+        "name": "The Numerals-Are-Mono Rule",
+        "body": "Vote counts, dates, IDs, percentages, durations, and any data-bearing numeral set on screen uses IBM Plex Mono (or Public Sans's tabular-numerals feature, font-variant-numeric: tabular-nums). Never a proportional serif numeral set inside a data table.",
+        "section": "typography"
+      },
+      {
+        "name": "The Quiet Headlines Rule",
+        "body": "Display and Headline use weight 400 — the same weight as body. Hierarchy comes from size, leading, and letter-spacing, not weight contrast. Bold display headlines belong in news media, not in this archive.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces are flat at rest. If you reach for a shadow to separate two regions, use a 1px rule line instead. If you reach for a shadow to lift a card, use Paper-96 as a tonal layer instead. If you reach for a shadow to convey hover, you have permission — but only the hairline state shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The No Decorative Shadow Rule",
+        "body": "Drop shadows for 'elevation' on cards at rest are forbidden. Glassmorphism, backdrop-blur, and inner glows are forbidden. The interface is printed, not lit.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do tint every neutral toward hue 240 with chroma 0.005-0.012. The Cool Axis Rule is non-negotiable.",
+      "Do set buttons, inputs, cards, panels, and nav with rounded-none. Sharp corners are the system signature.",
+      "Do speak in mono uppercase tracked labels (IBM Plex Mono, 11px, letter-spacing 0.16em) for section affordances, table headers, dates, IDs.",
+      "Do use 1px Paper-91 rule lines as the primary depth cue. Borrow from print archives, not from app shells.",
+      "Do apply font-variant-numeric: tabular-nums to every column of numbers in a data table.",
+      "Do keep body line length ≤ 65-75ch. Cap the prose container, not the page.",
+      "Do show the dateline at the top of every record-bearing page in the canonical mono uppercase format.",
+      "Do carry citation affordances (permalink, ID, indexed-at date) on every record. Citation-grade by default.",
+      "Do state empty states plainly. No cheerful microcopy, no illustrations.",
+      "Do verify color contrast meets WCAG 2.2 AA in both light and dark themes before shipping any new surface."
+    ],
+    "donts": [
+      "Don't use pure #000 / #fff or oklch(0 0 0) / oklch(1 0 0) for any neutral. The current globals.css uses both — update them to the tinted scale.",
+      "Don't add a left-border accent stripe to alerts, callouts, list items, or cards.",
+      "Don't render text with background-clip: text and a gradient fill. Solid color, weight, or size for emphasis.",
+      "Don't use glassmorphism, backdrop-filter: blur(...), or any variant of frosted-glass surfaces.",
+      "Don't place an icon-and-label hero metric (big number + small label + accent) on landing or dashboard pages.",
+      "Don't ship identical icon-and-arrow card grids ('Find · Filter · Cite').",
+      "Don't reach for a modal as the first thought. Inline reveal, route navigation, or a dedicated page first.",
+      "Don't apply gradient backgrounds, neon glows, or accent borders to convey importance.",
+      "Don't import royal-blue civic-portal patterns: institutional headers with seal motifs, deeply-nested accordions, dropdown menus full of acronyms.",
+      "Don't use tabloid red. The civic alert red sits at oklch(0.55 0.22 25) and never gets warmer.",
+      "Don't add CRT scanlines, ASCII art, neon-on-black, or any 'hacker terminal' decoration.",
+      "Don't animate CSS layout properties (width, height, top, left, padding). Use transform and opacity only.",
+      "Don't add an em-dash or -- to UI copy. Use commas, colons, semicolons, periods, or parentheses.",
+      "Don't carry shadows on cards or surfaces at rest. Flat by default.",
+      "Don't use Source Serif 4 anywhere inside a record body. Display and headline only."
+    ]
+  }
+}
