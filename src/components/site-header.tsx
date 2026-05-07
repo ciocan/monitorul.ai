@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { SiteSearch } from "@/components/site-search";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function SiteHeader() {
   return (
@@ -18,6 +19,7 @@ export function SiteHeader() {
         <div className="ml-auto flex-1 max-w-md">
           <SiteSearch />
         </div>
+        <ThemeToggle />
       </div>
     </header>
   );

@@ -18,8 +18,11 @@ import type {
   MoReport,
   MoSpeech,
   MoVote,
+  PersonActivityDay,
+  PersonActivityWindow,
   PersonPagePayload,
   PersonStats,
+  PersonYearCount,
   SearchResult,
 } from "./types";
 
@@ -36,8 +39,23 @@ type ChildGrainHit =
   | ({ grain: "interpellations" } & MoInterpellation)
   | ({ grain: "questions" } & MoQuestion);
 
+type ServedMode = "rrf" | "bm25-only";
+
 interface QueryLogEntry {
   op: string;
+  // User-facing search string, surfaced as a top-level field (also retained
+  // inside `args`) so analytics can aggregate on it without parsing nested
+  // objects. Trimmed; null for non-search ops (getDocument, personPage, etc.)
+  // and for empty/whitespace queries.
+  q: string | null;
+  // 1-indexed page number, lifted from `args.page` for paged ops; null for
+  // ops that don't paginate (getters, listDocumentChildren, personPage, …).
+  page: number | null;
+  // Retrieval mode actually served (not what the caller asked for). RRF can
+  // silently degrade to bm25-only on empty q / unreachable embedder / deep
+  // pages / zero-BM25 hits; logging the served mode shows the degrade rate.
+  // Null for ops that don't have a hybrid path.
+  mode: ServedMode | null;
   took_ms: number;
   es_took_ms: number | null;
   hits_total: number | null;
@@ -90,23 +108,35 @@ function logQuery(entry: QueryLogEntry): void {
 async function timed<T>(
   op: string,
   args: Record<string, unknown>,
-  fn: () => Promise<{ result: T; esTookMs: number | null; hitsTotal: number | null }>,
+  fn: () => Promise<{
+    result: T;
+    esTookMs: number | null;
+    hitsTotal: number | null;
+    mode?: ServedMode;
+  }>,
 ): Promise<T> {
   const start = performance.now();
   let esTookMs: number | null = null;
   let hitsTotal: number | null = null;
+  let mode: ServedMode | null = null;
   let error: string | null = null;
   try {
     const out = await fn();
     esTookMs = out.esTookMs;
     hitsTotal = out.hitsTotal;
+    mode = out.mode ?? null;
     return out.result;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
     throw e;
   } finally {
+    const rawQ = typeof args.q === "string" ? args.q.trim() : "";
+    const argsPage = typeof args.page === "number" ? args.page : null;
     logQuery({
       op,
+      q: rawQ.length > 0 ? rawQ : null,
+      page: argsPage,
+      mode,
       took_ms: Math.round(performance.now() - start),
       es_took_ms: esTookMs,
       hits_total: hitsTotal,
@@ -346,6 +376,26 @@ const RRF_NUM_CANDIDATES_FLOOR = 100;
 const RRF_POOL_FLOOR = 100;
 const RRF_POOL_CAP = 200;
 
+// Speech multi_match field set. Mirrors the Python sibling's
+// `SPEECH_SEARCH_FIELDS` in `monitorul_ii.elasticsearch.queries`. Each
+// diacritic-bearing main field is paired with a `.folded` subfield
+// (analyzed with `romanian_folded` = lowercase + asciifolding) at a
+// lower boost so a query like `sosoaca` matches indexed `șoșoacă` via
+// the folded path while diacritic-correct queries still rank exact
+// matches first via the higher main-field boost. The folded subfields
+// are populated by the indexer-side mapping change shipped alongside
+// this constant; the multi_match silently no-ops on indices that
+// haven't been re-indexed yet (ES treats missing fields as "no
+// match"), so this is forward-compatible across both upgrades.
+const SPEECH_SEARCH_FIELDS: string[] = [
+  "text^2",
+  "text.folded^1",
+  "agenda_title^1.5",
+  "agenda_title.folded^0.75",
+  "speaker.name_search",
+  "speaker.name_search.folded",
+];
+
 interface Bm25LegResult {
   hits: MoSpeech[];
   total: number;
@@ -364,7 +414,7 @@ async function bm25Leg(
     must.push({
       multi_match: {
         query: p.q,
-        fields: ["text^2", "agenda_title^1.5", "speaker.name_search"],
+        fields: SPEECH_SEARCH_FIELDS,
         type: "best_fields",
         operator: "or",
       },
@@ -384,9 +434,23 @@ async function bm25Leg(
     query: { bool: { must, filter: filters } },
     highlight: p.q
       ? {
+          // Highlight on both the diacritic-bearing main field and the
+          // `.folded` subfield so no-diacritic queries (`sosoaca`) still
+          // get snippet markup — the match landed on `text.folded`, the
+          // highlighter must look there too. ES merges fragments across
+          // matched_fields onto the parent field's render path.
           fields: {
-            text: { number_of_fragments: 1, fragment_size: 220 },
-            agenda_title: { number_of_fragments: 0 },
+            text: {
+              number_of_fragments: 1,
+              fragment_size: 220,
+              matched_fields: ["text", "text.folded"],
+              type: "unified",
+            },
+            agenda_title: {
+              number_of_fragments: 0,
+              matched_fields: ["agenda_title", "agenda_title.folded"],
+              type: "unified",
+            },
           },
           pre_tags: ["<mark>"],
           post_tags: ["</mark>"],
@@ -567,7 +631,12 @@ export async function searchSpeeches(
     const result = useRrf
       ? await searchSpeechesRrf(params, page, pageSize)
       : await searchSpeechesBm25(params, page, pageSize);
-    return { result, esTookMs: result.tookMs, hitsTotal: result.total };
+    return {
+      result,
+      esTookMs: result.tookMs,
+      hitsTotal: result.total,
+      mode: result.mode,
+    };
   });
 }
 
@@ -596,7 +665,7 @@ export async function searchSpeechesKnn(
       tookMs: leg.tookMs,
       mode: "rrf", // a kNN-only run is conceptually a "vector" mode; we tag it `rrf` for now since the SearchResult enum is binary.
     };
-    return { result, esTookMs: result.tookMs, hitsTotal: result.total };
+    return { result, esTookMs: result.tookMs, hitsTotal: result.total, mode: result.mode };
   });
 }
 
@@ -629,8 +698,80 @@ export async function searchPersons(q: string, pageSize?: number): Promise<MoPer
   });
 }
 
-export async function personPage(slug: string): Promise<PersonPagePayload | null> {
-  return timed("personPage", { slug }, async () => {
+// The heatmap renders one calendar year (Jan 1 – Dec 31). Anchoring to
+// calendar years rather than rolling 365-day windows lets the year-sparkbar
+// columns line up with the heatmap cleanly: clicking 2018 always shows the
+// 2018 grid, regardless of which day in 2018 the politician last spoke.
+function computeActivityWindow(year: number | null): PersonActivityWindow | null {
+  if (!year || !Number.isInteger(year)) return null;
+  const padded = String(year).padStart(4, "0");
+  return { from: `${padded}-01-01`, to: `${padded}-12-31` };
+}
+
+function yearOf(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getUTCFullYear();
+}
+
+async function fetchPersonActivity(
+  personId: string,
+  window: PersonActivityWindow,
+): Promise<PersonActivityDay[]> {
+  const res = await esClient().search({
+    index: ES_INDEX.speeches,
+    size: 0,
+    query: {
+      bool: {
+        filter: [
+          { term: { "speaker.person_id": personId } },
+          { term: { is_substantive: true } },
+          { range: { session_date: { gte: window.from, lte: window.to } } },
+        ],
+      },
+    },
+    aggs: {
+      by_day: {
+        date_histogram: {
+          field: "session_date",
+          calendar_interval: "day",
+          format: "yyyy-MM-dd",
+          // Sparse buckets only — cheaper than emitting 365 zero-count buckets;
+          // the renderer fills the empty days from the (from, to) range itself.
+          min_doc_count: 1,
+        },
+      },
+    },
+  });
+  const buckets =
+    (
+      res.aggregations as
+        | {
+            by_day: { buckets: Array<{ key_as_string: string; doc_count: number }> };
+          }
+        | undefined
+    )?.by_day.buckets ?? [];
+  return buckets.map((b) => ({ date: b.key_as_string, count: b.doc_count }));
+}
+
+// A single sitting rarely produces more than ~30 substantive speeches by one
+// speaker, so 50 covers the long tail of a day filter without paginating.
+const PERSON_DAY_SPEECH_LIMIT = 50;
+const PERSON_RECENT_SPEECH_LIMIT = 10;
+
+export interface PersonPageOptions {
+  year?: number;
+  // `YYYY-MM-DD`. When set, the speeches list narrows to that single day and
+  // the heatmap marks that cell. Year is derived from the day string.
+  day?: string;
+}
+
+export async function personPage(
+  slug: string,
+  opts: PersonPageOptions = {},
+): Promise<PersonPagePayload | null> {
+  return timed("personPage", { slug, year: opts.year, day: opts.day }, async () => {
     const personRes = await esClient()
       .get<MoPerson>({ index: ES_INDEX.persons, id: slug })
       .catch((e) => {
@@ -641,44 +782,109 @@ export async function personPage(slug: string): Promise<PersonPagePayload | null
       return { result: null, esTookMs: null, hitsTotal: 0 };
     }
     const person = personRes._source;
-    const speechRes = await esClient().search<MoSpeech>({
-      index: ES_INDEX.speeches,
-      size: 10,
-      query: {
-        bool: {
-          filter: [
-            { term: { "speaker.person_id": person.id } },
-            { term: { is_substantive: true } },
-          ],
+    const day = opts.day ?? null;
+    // Day implies year — the heatmap and sparkbar should track the day's
+    // calendar year regardless of any explicit `?year=` (which is redundant
+    // but tolerated for share-link robustness).
+    const yearFromDay = day ? Number.parseInt(day.slice(0, 4), 10) : null;
+    const requestedYear = yearFromDay ?? opts.year ?? null;
+    const personSpeechFilters: QueryDslQueryContainer[] = [
+      { term: { "speaker.person_id": person.id } },
+      { term: { is_substantive: true } },
+    ];
+    if (day) {
+      personSpeechFilters.push({ term: { session_date: day } });
+    } else if (requestedYear) {
+      personSpeechFilters.push({
+        range: {
+          session_date: { gte: `${requestedYear}-01-01`, lte: `${requestedYear}-12-31` },
         },
-      },
-      sort: [{ session_date: { order: "desc" } }],
-      aggs: {
-        speech_count: { value_count: { field: "record_id" } },
-        first_speech_date: { min: { field: "session_date" } },
-        last_speech_date: { max: { field: "session_date" } },
-      },
-      _source: { excludes: ["enrichments.embedding", "text"] },
-    });
-    const aggs = speechRes.aggregations as
+      });
+    }
+    // Two queries in parallel:
+    // 1. Filtered speech search — drives the speeches list, narrowed to the
+    //    selected year/day.
+    // 2. Unfiltered career-long aggregations — drives the sparkbar and the
+    //    stats fallback. These need every year, not just the filtered scope,
+    //    so they live in their own request rather than a `global` agg (which
+    //    we tried first; the sub-`filter` re-applies the parent year filter
+    //    despite the spec, so the per-year buckets came back filtered).
+    const [speechRes, careerRes] = await Promise.all([
+      esClient().search<MoSpeech>({
+        index: ES_INDEX.speeches,
+        size: day ? PERSON_DAY_SPEECH_LIMIT : PERSON_RECENT_SPEECH_LIMIT,
+        track_total_hits: true,
+        query: { bool: { filter: personSpeechFilters } },
+        sort: [{ session_date: { order: "desc" } }, { position_in_document: { order: "asc" } }],
+        // `text` is intentionally retained — the speeches list shows an
+        // excerpt (truncated client-side to ~240 chars). Embedding vectors
+        // stay out (1024 floats × 50 hits would be ~200 KB of ballast).
+        _source: { excludes: ["enrichments.embedding"] },
+      }),
+      esClient().search({
+        index: ES_INDEX.speeches,
+        size: 0,
+        query: {
+          bool: {
+            filter: [
+              { term: { "speaker.person_id": person.id } },
+              { term: { is_substantive: true } },
+            ],
+          },
+        },
+        aggs: {
+          speech_count: { value_count: { field: "record_id" } },
+          first_speech_date: { min: { field: "session_date" } },
+          last_speech_date: { max: { field: "session_date" } },
+          by_year: {
+            date_histogram: {
+              field: "session_date",
+              calendar_interval: "year",
+              format: "yyyy",
+              min_doc_count: 1,
+            },
+          },
+        },
+      }),
+    ]);
+    const careerAggs = careerRes.aggregations as
       | {
           speech_count: { value: number };
           first_speech_date: { value_as_string?: string; value: number | null };
           last_speech_date: { value_as_string?: string; value: number | null };
+          by_year: { buckets: Array<{ key_as_string: string; doc_count: number }> };
         }
       | undefined;
     const stats: PersonStats = person.stats ?? {
-      speech_count: aggs?.speech_count.value ?? 0,
-      first_speech_date: aggs?.first_speech_date.value_as_string ?? null,
-      last_speech_date: aggs?.last_speech_date.value_as_string ?? null,
+      speech_count: careerAggs?.speech_count.value ?? 0,
+      first_speech_date: careerAggs?.first_speech_date.value_as_string ?? null,
+      last_speech_date: careerAggs?.last_speech_date.value_as_string ?? null,
       interpellation_count: 0,
       question_count: 0,
     };
+    const yearlyCounts: PersonYearCount[] = (careerAggs?.by_year.buckets ?? [])
+      .map((b) => ({ year: Number.parseInt(b.key_as_string, 10), count: b.doc_count }))
+      .filter((b) => Number.isInteger(b.year))
+      .sort((a, b) => a.year - b.year);
+    // Default selection: most recent active year. An out-of-range explicit
+    // `?year=` (e.g. before the politician's first session) still renders —
+    // the heatmap shows an empty grid so the user understands their selection
+    // landed somewhere with no activity.
+    const fallbackYear = yearlyCounts.at(-1)?.year ?? yearOf(stats.last_speech_date);
+    const selectedYear = requestedYear ?? fallbackYear ?? null;
+    const window = computeActivityWindow(selectedYear);
+    const activity = window ? await fetchPersonActivity(person.id, window) : [];
     return {
       result: {
         person,
         recentSpeeches: speechRes.hits.hits.flatMap((h) => (h._source ? [h._source] : [])),
         stats,
+        activity,
+        activityWindow: window,
+        yearlyCounts,
+        selectedYear,
+        selectedDate: day,
+        filteredSpeechTotal: totalOf(speechRes.hits.total),
       },
       esTookMs: speechRes.took ?? null,
       hitsTotal: totalOf(speechRes.hits.total),

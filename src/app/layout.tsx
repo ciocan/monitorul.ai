@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 
 import "./globals.css";
 
+const themeInitScript = `(function(){try{var d=localStorage.getItem('theme')==='dark';if(d)document.documentElement.classList.add('dark');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`;
+
 const publicSans = Public_Sans({
   subsets: ["latin", "latin-ext"],
   variable: "--font-sans",
@@ -49,6 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="ro"
+      suppressHydrationWarning
       className={cn(
         "h-full",
         "antialiased",
@@ -58,6 +61,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         "font-sans",
       )}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <SiteHeader />
         <main className="flex-1">{children}</main>

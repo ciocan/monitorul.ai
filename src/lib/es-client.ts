@@ -30,4 +30,4 @@ export const ES_INDEX = {
   persons: "mo-persons",
 } as const;
 
-export const QUERY_LOG_INDEX = "monitorul_query_log";
+export const QUERY_LOG_INDEX = "mo_query_log";

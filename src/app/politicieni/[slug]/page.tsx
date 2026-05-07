@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ContributionsGraph } from "@/components/contributions-graph";
 import { Dateline } from "@/components/dateline";
+import { YearlyActivityChart } from "@/components/yearly-activity-chart";
 import { env } from "@/env";
-import { formatCount, formatDate } from "@/lib/format";
+import { formatCount, formatDate, speechExcerpt, speechMeta } from "@/lib/format";
 import { personPage } from "@/lib/search";
 import type { Mandate, MoPerson, MoSpeech, PersonStats } from "@/lib/types";
 
@@ -19,6 +21,29 @@ interface RouteParams {
 
 interface PageProps {
   params: Promise<RouteParams>;
+  searchParams: Promise<{ year?: string; day?: string }>;
+}
+
+// Accepts `2024`, `1995`, etc. Anything outside the parliamentary archive
+// range or not parseable as an integer falls back to the default selection
+// (most recent active year). Prevents `?year=2099` from doing anything weird.
+function parseYearParam(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1990 || n > 2100) return undefined;
+  return n;
+}
+
+// Strict YYYY-MM-DD; rejects anything that's not a real calendar date so a
+// hand-crafted `?day=2018-13-99` can't poison the heatmap state.
+const DAY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+function parseDayParam(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const m = DAY_SHAPE.exec(raw);
+  if (!m) return undefined;
+  const d = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== raw) return undefined;
+  return raw;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -44,13 +69,32 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PersonPage({ params }: PageProps) {
+export default async function PersonPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
-  const payload = await personPage(slug);
+  const sp = await searchParams;
+  const year = parseYearParam(sp.year);
+  const day = parseDayParam(sp.day);
+  const payload = await personPage(slug, { year, day });
   if (!payload) notFound();
-  const { person, stats, recentSpeeches } = payload;
+  const {
+    person,
+    stats,
+    recentSpeeches,
+    activity,
+    activityWindow,
+    yearlyCounts,
+    selectedYear,
+    selectedDate,
+    filteredSpeechTotal,
+  } = payload;
   const lifespan = activeLifespan(stats, person.mandates);
   const currentMandate = pickCurrentMandate(person.mandates);
+  const isFiltered = Boolean(year ?? day);
+  const speechesHeading = selectedDate
+    ? `Discursuri din ${formatDate(selectedDate) ?? selectedDate}`
+    : year
+      ? `Discursuri din ${year}`
+      : "Discursuri recente";
 
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
@@ -81,12 +125,45 @@ export default async function PersonPage({ params }: PageProps) {
         </section>
       ) : null}
 
+      {activityWindow && selectedYear ? (
+        <section className="mt-12" aria-labelledby="activitate">
+          <h2 id="activitate" className="label-mono mb-4 text-ink-30">
+            Activitate
+          </h2>
+          {yearlyCounts.length > 1 ? (
+            <YearlyActivityChart
+              yearlyCounts={yearlyCounts}
+              selectedYear={selectedYear}
+              slug={person.slug}
+              className="mb-8"
+            />
+          ) : null}
+          <ContributionsGraph
+            activity={activity}
+            window={activityWindow}
+            slug={person.slug}
+            selectedDate={selectedDate}
+          />
+        </section>
+      ) : null}
+
       <section className="mt-12" aria-labelledby="discursuri-recente">
-        <h2 id="discursuri-recente" className="label-mono mb-4 text-ink-30">
-          Discursuri recente
-        </h2>
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+          <h2 id="discursuri-recente" className="label-mono text-ink-30">
+            {speechesHeading}
+          </h2>
+          {isFiltered && filteredSpeechTotal > recentSpeeches.length ? (
+            <span
+              className="font-mono-meta text-xs text-ink-45"
+              data-tabular-nums=""
+              aria-label={`${filteredSpeechTotal} în total, primele ${recentSpeeches.length} afișate`}
+            >
+              {recentSpeeches.length} din {formatCount(filteredSpeechTotal)}
+            </span>
+          ) : null}
+        </div>
         {recentSpeeches.length === 0 ? (
-          <EmptySpeeches />
+          <EmptySpeeches selectedDate={selectedDate} selectedYear={year ?? null} />
         ) : (
           <SpeechesList speeches={recentSpeeches} />
         )}
@@ -209,6 +286,8 @@ function SpeechesList({ speeches }: { speeches: MoSpeech[] }) {
           ? `/mo/${parsed.year}/${parsed.part}/${parsed.issue}#discurs-${speech.position_in_document ?? speech.position_in_agenda}`
           : "/";
         const sessionDate = formatDate(speech.session_date);
+        const excerpt = speechExcerpt(speech.text);
+        const meta = speechMeta(speech);
         return (
           <li key={speech.record_id}>
             <Link
@@ -218,11 +297,14 @@ function SpeechesList({ speeches }: { speeches: MoSpeech[] }) {
               <p className="label-mono text-ink-45">
                 {[speech.chamber, sessionDate].filter(Boolean).join(" · ")}
               </p>
-              {speech.agenda_title ? (
+              {excerpt ? (
+                <p className="mt-2 text-base leading-relaxed text-ink-16">{excerpt}</p>
+              ) : speech.agenda_title ? (
                 <p className="mt-1 text-base leading-snug text-ink-16 group-hover/row:underline underline-offset-4">
                   {speech.agenda_title}
                 </p>
               ) : null}
+              {meta ? <p className="mt-2 label-mono text-ink-45">{meta}</p> : null}
             </Link>
           </li>
         );
@@ -231,14 +313,20 @@ function SpeechesList({ speeches }: { speeches: MoSpeech[] }) {
   );
 }
 
-function EmptySpeeches() {
+interface EmptySpeechesProps {
+  selectedDate: string | null;
+  selectedYear: number | null;
+}
+
+function EmptySpeeches({ selectedDate, selectedYear }: EmptySpeechesProps) {
+  const message = selectedDate
+    ? `Nu există discursuri înregistrate la ${formatDate(selectedDate) ?? selectedDate}.`
+    : selectedYear
+      ? `Nu există discursuri înregistrate în ${selectedYear}.`
+      : "Nu există discursuri legate de această persoană în arhivă. Legarea numelor din stenograme la registrul politicienilor este în desfășurare; intrările vor apărea pe măsură ce reindexarea progresează.";
   return (
     <div className="border border-border bg-paper-96 px-6 py-10">
-      <p className="text-sm leading-relaxed text-ink-30">
-        Nu există discursuri legate de această persoană în arhivă. Legarea numelor din stenograme la
-        registrul politicienilor este în desfășurare; intrările vor apărea pe măsură ce reindexarea
-        progresează.
-      </p>
+      <p className="text-sm leading-relaxed text-ink-30">{message}</p>
     </div>
   );
 }

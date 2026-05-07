@@ -284,8 +284,37 @@ export interface SearchResult<T> {
   mode?: "rrf" | "bm25-only";
 }
 
+export interface PersonActivityDay {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface PersonActivityWindow {
+  from: string; // YYYY-MM-DD inclusive
+  to: string; // YYYY-MM-DD inclusive
+}
+
+export interface PersonYearCount {
+  year: number;
+  count: number;
+}
+
 export interface PersonPagePayload {
   person: MoPerson;
   recentSpeeches: MoSpeech[];
   stats: PersonStats;
+  activity: PersonActivityDay[];
+  activityWindow: PersonActivityWindow | null;
+  // Per-year substantive speech totals (sparse — only years with ≥1 speech).
+  // Sorted ascending by year. Drives the year sparkbar above the heatmap.
+  yearlyCounts: PersonYearCount[];
+  // The calendar year currently rendered in the heatmap. When the page is
+  // hit without `?year=`, this is the year of `stats.last_speech_date`.
+  selectedYear: number | null;
+  // The day currently filtered (`?day=YYYY-MM-DD`). When set, the heatmap
+  // marks that cell and `recentSpeeches` is narrowed to that single day.
+  selectedDate: string | null;
+  // Total substantive-speech count matching the current filter (year/day).
+  // Used to label the speeches section ("X discursuri") when filtered.
+  filteredSpeechTotal: number;
 }

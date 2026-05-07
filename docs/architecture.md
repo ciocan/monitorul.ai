@@ -103,19 +103,19 @@ All ES access goes through one server-only module — [`src/lib/search.ts`](../s
 
 Functions (current shape):
 
-- `searchSpeeches({ q, speakerPersonId, chamber, dateFrom, dateTo, refBills, topics, isSubstantive, page, pageSize, rankFusion })` — multi_match BM25 over `text^2` / `agenda_title^1.5` / `speaker.name_search`, fused with kNN over `enrichments.embedding` via RRF (default — see below).
+- `searchSpeeches({ q, speakerPersonId, chamber, dateFrom, dateTo, refBills, topics, isSubstantive, page, pageSize, rankFusion })` — multi_match BM25 over the `SPEECH_SEARCH_FIELDS` constant (main fields `text^2` / `agenda_title^1.5` / `speaker.name_search` paired with their `.folded` subfields at lower boosts so no-diacritic queries like `sosoaca` still match indexed `șoșoacă` — see "Diacritic-insensitive search" below), fused with kNN over `enrichments.embedding` via RRF (default — see below).
 - `searchSpeechesKnn` — pure kNN ablation; throws (no BM25 fallback) when the embed service is unreachable so callers can distinguish misconfig from "no semantic matches".
 - `listDocumentChildren(documentId)` — multi-grain interleave for `/mo/<id>` playback, sorted by `position_in_document` ASC. Speech `text` is **kept** in the response (only `enrichments.embedding` is excluded) so the document page can render speech bodies inline; with ~50 speeches per stenogram and ISR 1h, the per-page payload is acceptable.
 - `getDocument` / `getAgendaItem` / `getSpeech` / `getReport` — single lookup by `record_id`.
 - `listDocumentsByDate(date, chamber?)` / `listCommitteeMeetings(committeeId, dateFrom?)`
-- `personPage(slug)` — composite payload for `/politicieni/<slug>`: person record + recent substantive speeches + speech-count / first-/last-speech-date aggregations.
+- `personPage(slug, { year?, day? })` — composite payload for `/politicieni/<slug>`. Two ES queries run in parallel: a **filtered** speech search narrowed to `year` or `day` (drives the speeches list, returns up to 50 hits for a day filter, 10 otherwise), and an **unfiltered** career-long aggregation (drives the year sparkbar + stats fallback). `day` implies year (parsed from the date string); a separate per-day `date_histogram` runs sequentially after for the heatmap of the selected calendar year.
 - `searchPersons(q)` — `multi_match` with `operator: and` over `canonical_name` (+ `.folded` subfield) and `aliases`.
 - `aggSpeechesByPartyYear({ year?, chamber? })` — nested `terms` agg on `speaker.party_group_at_time × year`.
 - `getArchiveStats()` — homepage stats register; ten parallel `_count` calls (one per grain + a `is_substantive: true` filter on speeches) wrapped in `Promise.allSettled` so a partial outage doesn't blank the section.
 
 Hard server-side guardrails baked into the layer (not client suggestions): `pageSize` clamped to 50, `isSubstantive: true` default on public-facing speech search (chair-procedure boilerplate hidden), aggregation `size` capped at 100, every search forces `track_total_hits: true` so paged totals stay stable across pages.
 
-Per-call timing is logged via `timed(op, args, fn)`. In dev the wrapper writes a one-line `[search:OK|ERR]` to stderr; in prod (when `QUERY_LOG_WRITE=1`) the wrapper fire-and-forgets an `index` request to `monitorul_query_log`, swallowing failures.
+Per-call timing is logged via `timed(op, args, fn)`. In dev the wrapper writes a one-line `[search:OK|ERR]` to stderr; in prod (when `QUERY_LOG_WRITE=1`) the wrapper fire-and-forgets an `index` request to `monitorul_query_log`, swallowing failures. Each entry: `{ op, q, page, mode, took_ms, es_took_ms, hits_total, error, args, timestamp }`. `q` (trimmed user-facing search string), `page` (1-indexed), and `mode` (the _served_ retrieval — `rrf` or `bm25-only`, which can differ from the requested `rankFusion` after a silent degrade) are lifted out of `args` so Kibana / aggregations can group on them without nested-object parsing. All three are `null` for ops that don't expose them (getters, listings, person page).
 
 ## Hybrid search (RRF)
 
@@ -161,6 +161,29 @@ The `/cauta` page surfaces the served mode as a `Hibrid` / `BM25` chip next to t
 }
 ```
 
+### Diacritic-insensitive search
+
+Romanian users frequently type without diacritics — `sosoaca` instead of `șoșoacă`, `iohanis` instead of `iohannis`. Every user-searchable text field on the `mo-*` indices carries a `.folded` subfield analyzed with `romanian_folded` (`standard` tokenizer + `lowercase` + `asciifolding` filters). The `bm25Leg` multi_match and the persons search both fan out across the main field plus its `.folded` sibling so either spelling matches the same documents.
+
+Boost layout (in `SPEECH_SEARCH_FIELDS`):
+
+| Field                        | Boost | Behaviour                                                |
+| ---------------------------- | ----- | -------------------------------------------------------- |
+| `text^2`                     | 2.0   | Diacritic-correct main field, `romanian` analyzer + stem |
+| `text.folded^1`              | 1.0   | Folded subfield, matches no-diacritic queries            |
+| `agenda_title^1.5`           | 1.5   | Agenda title, diacritic-correct                          |
+| `agenda_title.folded^0.75`   | 0.75  | Agenda title, folded                                     |
+| `speaker.name_search`        | 1.0   | Speaker name, diacritic-correct                          |
+| `speaker.name_search.folded` | 1.0   | Speaker name, folded                                     |
+
+The main field always boosts higher than its folded sibling so queries that include diacritics still rank exact matches first; queries that strip diacritics get the same hit set with slightly different ordering. This interacts cleanly with the BM25-zero-hits gate: pre-fix, a query like `sosoaca` returned 0 BM25 hits → kNN gate dropped → user saw nothing. Post-fix, `sosoaca` matches via `text.folded`, BM25 returns hits, kNN is fused in normally.
+
+The highlight block opts into ES's `unified` highlighter with `matched_fields: ["text", "text.folded"]` so a snippet renders with `<mark>` markup whether the match landed on the main or folded field. Without `matched_fields`, snippets vanish on no-diacritic queries.
+
+The vector leg is unaffected: BGE-M3 was trained on Romanian text in both diacritic-bearing and stripped forms; cosine similarity between `șoșoacă` and `sosoaca` query vectors is ~0.92–0.97. Indexed embeddings are over the corpus's diacritic-correct text and queries are passed verbatim to the embed service. Folding the query before embedding would push it off-distribution and hurt kNN recall — the folding fix is **lexical-side only**.
+
+The mapping change (adding `.folded` subfields) ships from the [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) indexer side. Operationally: `monitorul-ii es-init --update-mappings` pushes the additive subfields in seconds, then `monitorul-ii index pdfs/ --force` reanalyzes every doc to populate them (~15 min on the 5552-doc corpus at `-j 16`). This `search.ts` change is forward-compatible: indices that haven't been re-indexed yet have empty `.folded` subfields and the multi_match silently no-ops on them — the diacritic-correct main fields still serve diacritic-correct queries, only `sosoaca`-style queries return empty until the corpus is repopulated. Common-noun morphology (`educație` ↔ `educatie`) is intentionally not addressed by `romanian_folded` since the analyzer doesn't stem; deferred to a future `ro_folded` upgrade (folding + stemming + stopwords) if query-log signal warrants the additional generation rebuild.
+
 ### Divergences from the Python sibling
 
 The core math is identical; the policy differs in four places, all deliberate:
@@ -174,13 +197,20 @@ The core math is identical; the policy differs in four places, all deliberate:
 
 ## Person pages
 
-`/politicieni/[slug]` is the citation-grade fiche for a single politician. The page calls `personPage(slug)` (see [`src/lib/search.ts`](../src/lib/search.ts)) which composes:
+`/politicieni/[slug]` is the citation-grade fiche for a single politician. The page calls `personPage(slug, year?)` (see [`src/lib/search.ts`](../src/lib/search.ts)) which composes:
 
 - A direct `_id` lookup on `mo-persons` — the upstream pipeline mints `_id`, `id`, and `slug` to the same string (e.g. `ciolacu-marcel`), so URL slug = ES doc id.
-- A 10-row recent-speeches list filtered by `speaker.person_id` and `is_substantive: true`, sorted by `session_date` desc.
-- Aggregations for `speech_count`, `first_speech_date`, `last_speech_date` (used as fallback when the upstream `MoPerson.stats` block is missing).
+- A **filtered** speech search (filters: `speaker.person_id`, `is_substantive: true`, plus the year/day range from search params), sorted by `session_date` desc → `position_in_document` asc. Drives the speeches list. Returns up to 50 hits for a day filter (a single sitting rarely produces more than ~30 substantive speeches by one speaker), 10 otherwise. `track_total_hits: true` so the section can show "10 din 82".
+- An **unfiltered** career-long aggregation in parallel: `speech_count`, `first_speech_date`, `last_speech_date` (used as `MoPerson.stats` fallback), and a `by_year` `date_histogram` (`calendar_interval: year`, `min_doc_count: 1`) that powers the year sparkbar. Two queries instead of one because ES `global` + nested `filter` agg returned the per-year buckets filtered by the parent year filter despite the `global` escape — splitting is more reliable than fighting the bucket inheritance.
+- A `date_histogram` (`calendar_interval: day`, `min_doc_count: 1`) over substantive speeches in the **selected calendar year** (Jan 1 – Dec 31). The selected year defaults to the most recent active year; an explicit `?year=YYYY` or `?day=YYYY-MM-DD` (year derived) swaps it. Calendar-year anchoring (rather than rolling 365 days) lets the sparkbar columns line up cleanly with the heatmap — clicking 2018 always shows the 2018 grid regardless of which day in 2018 the politician last spoke. Empty days are filled in by the renderer; ES only returns sparse buckets.
 
-Layout: name + lifespan dateline → meta register (speeches / first / last / Wikidata) → mandates list → recent speeches list (each row anchors back to `/mo/<year>/<part>/<issue>#discurs-<position_in_document>` so the citation lands on the exact speech). JSON-LD emits a `Person` node with `name`, `alternateName` (aliases), `birthDate`, `sameAs` (Wikidata URL when QID known).
+Layout: name + lifespan dateline → meta register (speeches / first / last / Wikidata) → mandates list → year sparkbar → contributions graph → recent speeches list (each row anchors back to `/mo/<year>/<part>/<issue>#discurs-<position_in_document>` so the citation lands on the exact speech). JSON-LD emits a `Person` node with `name`, `alternateName` (aliases), `birthDate`, `sameAs` (Wikidata URL when QID known).
+
+The year sparkbar (see [`src/components/yearly-activity-chart.tsx`](../src/components/yearly-activity-chart.tsx)) is HTML/CSS, not SVG, so each column is a real `<Link>` with proper accessibility semantics (`aria-current="true"` on the selected year, descriptive `aria-label` per bar). Inactive years between the politician's first and last active year are gap-filled with zero-height bars so the time axis stays linear. Clicks use `scroll={false}` + `prefetch={false}` so the page swaps the heatmap below without snapping the viewport or eagerly fetching every year. `?year=` is non-canonical — `generateMetadata` always sets `alternates.canonical` to the bare URL so search engines consolidate any year-flavored crawl into one entry.
+
+The contributions graph (see [`src/components/contributions-graph.tsx`](../src/components/contributions-graph.tsx)) is a pure-SVG signature component: 53-week × 7-day grid (Monday-first, ISO-8601), four-tier azure intensity scale (1 / 2–3 / 4–6 / 7+ speeches per day) on `paper-91` empty cells, native `<title>` tooltips for hover + screen-reader exposure. Non-empty cells are wrapped in plain `<a href>` (Next `<Link>` doesn't render inside SVG; the App Router still intercepts internal navigations) pointing at `?day=YYYY-MM-DD` — clicking narrows the speeches list below to that day and marks the cell with a 1.5px `ink-16` stroke. Empty cells are inert. Hidden when the politician has no recorded `last_speech_date`; renders an all-empty grid when `?year=` lands on a year with no activity.
+
+The speeches section header swaps based on filter state: `Discursuri recente` (no filter), `Discursuri din 2018` (year), `Discursuri din 15 martie 2018` (day). When the filter total exceeds the page size, a "10 din 82" caption appears next to the header. The empty state copy follows the same axis: a generic linking-pass note when no filter is applied, a precise "Nu există discursuri înregistrate la …" / "în …" when the filter scope happens to be empty.
 
 **Speaker→person link gate.** Speech blocks on the document page wrap the speaker name in a `<Link>` only when `speaker.person_id` is non-null. The upstream linking pass (`monitorul-ii backfill --kind=persons` + `monitorul-ii index --force --grain=mo-speeches`) is what populates that field — running on the corpus right now. While it's mid-pass, most speakers render as plain text and the URL is unreachable; as soon as a speech is linked, the same render path produces a working link with no frontend revisit. `/politicieni/<slug>` itself is reachable for any person record (13K+ today), independent of the linking pass.
 
