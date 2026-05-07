@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Dateline } from "@/components/dateline";
+import { env } from "@/env";
 import {
   agendaCategoryLabel,
   agendaOutcomeLabel,
@@ -302,7 +303,7 @@ function RecordIdentity({ doc }: { doc: MoDocument }) {
 // Per docs/elasticsearch-indexing.md §Q7: documents emit Article + GovernmentService.
 // We render them as a @graph so a single <script> tag carries both nodes.
 function DocumentJsonLd({ doc }: { doc: MoDocument }) {
-  const url = `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/mo/${doc.year}/${doc.part}/${doc.issue}`;
+  const url = `${env.NEXT_PUBLIC_SITE_URL}/mo/${doc.year}/${doc.part}/${doc.issue}`;
   const datePublished = doc.published ?? doc.session_date ?? `${doc.year}-01-01`;
   const jsonLd = {
     "@context": "https://schema.org",

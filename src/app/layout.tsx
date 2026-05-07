@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, Public_Sans, Source_Serif_4 } from "next/font/google";
 
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
 import "./globals.css";
@@ -26,10 +27,8 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://monitorul.ai";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
+  metadataBase: new URL(env.NEXT_PUBLIC_SITE_URL),
   title: {
     default: "monitorul.ai · Arhiva publică a Monitorului Oficial Partea a II-a",
     template: "%s · monitorul.ai",

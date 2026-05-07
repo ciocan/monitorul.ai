@@ -277,6 +277,11 @@ export interface SearchResult<T> {
   // record_id → highlighted snippet from the matching field (already wrapped
   // in <mark>…</mark> on hit terms). Absent when the search had no `q`.
   highlights?: Record<string, string>;
+  // Which retrieval mode actually served this response. The caller asks for
+  // `rrf` by default; the layer falls back to `bm25-only` silently when the
+  // embed service is unreachable, the query is empty, or the user has paged
+  // past the RRF fusion pool. Surfaced so the UI can flag the mode.
+  mode?: "rrf" | "bm25-only";
 }
 
 export interface PersonPagePayload {

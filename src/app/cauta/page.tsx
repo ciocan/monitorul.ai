@@ -70,7 +70,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 }
 
 async function SearchResults({ q, page }: { q: string; page: number }) {
-  const result = await searchSpeeches({ q, page, pageSize: PAGE_SIZE });
+  const result = await searchSpeeches({ q, page, pageSize: PAGE_SIZE, rankFusion: "rrf" });
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const safePage = Math.min(page, totalPages);
 
@@ -82,7 +82,12 @@ async function SearchResults({ q, page }: { q: string; page: number }) {
             ? `${formatCount(result.total)} ${result.total === 1 ? "rezultat" : "rezultate"}`
             : "Niciun rezultat"}
         </h2>
-        <p className="label-mono text-ink-45" data-tabular-nums="">
+        <p
+          className="label-mono text-ink-45"
+          data-tabular-nums=""
+          title={result.mode === "rrf" ? "Hibrid: BM25 + kNN (BGE-M3) cu fuziune RRF" : "Doar BM25"}
+        >
+          <span className="text-ink-30">{result.mode === "rrf" ? "Hibrid" : "BM25"}</span> ·{" "}
           {result.tookMs} ms
         </p>
       </div>

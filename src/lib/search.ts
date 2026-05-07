@@ -2,6 +2,9 @@ import "server-only";
 
 import type { QueryDslQueryContainer, SearchRequest } from "@elastic/elasticsearch/lib/api/types";
 
+import { env } from "@/env";
+
+import { embedQuery } from "./embed";
 import { ES_INDEX, QUERY_LOG_INDEX, esClient } from "./es-client";
 import type {
   Chamber,
@@ -70,13 +73,13 @@ function totalOf(hitsTotal: unknown): number {
 // monitorul_query_log; failures are swallowed by design (the indexer pipeline
 // runs the actual logger). In dev, we still emit to stderr for visibility.
 function logQuery(entry: QueryLogEntry): void {
-  if (process.env.NODE_ENV !== "production") {
+  if (env.NODE_ENV !== "production") {
     const tag = entry.error ? "ERR" : "OK";
     console.log(
       `[search:${tag}] ${entry.op} took=${entry.took_ms}ms es=${entry.es_took_ms ?? "?"}ms hits=${entry.hits_total ?? "?"}`,
     );
   }
-  if (process.env.QUERY_LOG_WRITE !== "1") return;
+  if (!env.QUERY_LOG_WRITE) return;
   void esClient()
     .index({ index: QUERY_LOG_INDEX, document: entry })
     .catch(() => {
@@ -328,12 +331,32 @@ function speechFilters(p: SearchSpeechesParams): QueryDslQueryContainer[] {
   return filters;
 }
 
-async function searchSpeechesBm25(
+// RRF tuning — kept in sync with Python `monitorul_ii.elasticsearch.queries`
+// constants where possible. `RRF_RANK_CONSTANT=60` is the de-facto standard
+// since the 2009 paper. `RRF_NUM_CANDIDATES_MULT=10` matches the Python value
+// (HNSW exploration depth per shard). Pool/window sizes diverge from Python:
+// Python scales the window linearly with page (`page * page_size`), this layer
+// caps at 200 and falls back to BM25-only past that — a cost ceiling chosen
+// for public-traffic latency over deep-page hybrid quality.
+const RRF_RANK_CONSTANT = 60;
+const RRF_NUM_CANDIDATES_MULT = 10;
+const RRF_NUM_CANDIDATES_FLOOR = 100;
+const RRF_POOL_FLOOR = 100;
+const RRF_POOL_CAP = 200;
+
+interface Bm25LegResult {
+  hits: MoSpeech[];
+  total: number;
+  tookMs: number;
+  highlights: Record<string, string>;
+}
+
+async function bm25Leg(
   p: SearchSpeechesParams,
-  page: number,
-  pageSize: number,
-): Promise<SearchResult<MoSpeech>> {
-  const filters = speechFilters(p);
+  filters: QueryDslQueryContainer[],
+  from: number,
+  size: number,
+): Promise<Bm25LegResult> {
   const must: QueryDslQueryContainer[] = [];
   if (p.q && p.q.trim()) {
     must.push({
@@ -349,8 +372,8 @@ async function searchSpeechesBm25(
   }
   const res = await esClient().search<MoSpeech>({
     index: ES_INDEX.speeches,
-    from: offsetFor(page, pageSize),
-    size: pageSize,
+    from,
+    size,
     // Without this, ES early-terminates total counting and returns different
     // approximate totals per page — which gives the user inconsistent
     // "Pagina X din Y" values as they paginate. Forcing exact counts costs a
@@ -379,10 +402,156 @@ async function searchSpeechesBm25(
   return {
     hits: res.hits.hits.flatMap((h) => (h._source ? [h._source] : [])),
     total: totalOf(res.hits.total),
-    page: page,
-    pageSize,
     tookMs: res.took ?? 0,
-    highlights: p.q ? highlights : undefined,
+    highlights,
+  };
+}
+
+interface KnnLegResult {
+  hits: MoSpeech[];
+  tookMs: number;
+}
+
+async function knnLeg(
+  vector: number[],
+  filters: QueryDslQueryContainer[],
+  k: number,
+): Promise<KnnLegResult> {
+  const res = await esClient().search<MoSpeech>({
+    index: ES_INDEX.speeches,
+    size: k,
+    knn: {
+      field: "enrichments.embedding",
+      query_vector: vector,
+      k,
+      // Per-shard HNSW exploration depth. `10×` mirrors the Python sibling's
+      // `RRF_NUM_CANDIDATES_MULT` and is the recall/latency knob: more
+      // candidates = better neighbour discovery, slightly higher CPU.
+      num_candidates: Math.max(RRF_NUM_CANDIDATES_FLOOR, k * RRF_NUM_CANDIDATES_MULT),
+      filter: filters,
+    },
+    _source: { excludes: ["enrichments.embedding"] },
+  });
+  return {
+    hits: res.hits.hits.flatMap((h) => (h._source ? [h._source] : [])),
+    tookMs: res.took ?? 0,
+  };
+}
+
+// Reciprocal Rank Fusion. score(d) = Σ over legs of 1 / (rank_constant + rank_in_leg).
+// Docs that appear in both legs accumulate higher than those that appear in one.
+// Insertion order in the input legs IS the rank (1-indexed).
+//
+// Tiebreaker: `record_id` ascending. Mirrors the Python sibling's
+// `sorted(rrf_scores.keys(), key=lambda d: (-rrf_scores[d], d))` so identical
+// queries produce identical orderings across both code paths — important for
+// cache-key stability and reproducibility of any analytics that join on
+// (query, position) pairs.
+function fuseRrf(legs: MoSpeech[][], rankConstant: number = RRF_RANK_CONSTANT): MoSpeech[] {
+  const scored = new Map<string, { doc: MoSpeech; score: number }>();
+  for (const leg of legs) {
+    leg.forEach((doc, i) => {
+      const rank = i + 1;
+      const score = 1 / (rankConstant + rank);
+      const existing = scored.get(doc.record_id);
+      if (existing) {
+        existing.score += score;
+      } else {
+        scored.set(doc.record_id, { doc, score });
+      }
+    });
+  }
+  return Array.from(scored.values())
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.doc.record_id < b.doc.record_id ? -1 : a.doc.record_id > b.doc.record_id ? 1 : 0;
+    })
+    .map((e) => e.doc);
+}
+
+async function searchSpeechesBm25(
+  p: SearchSpeechesParams,
+  page: number,
+  pageSize: number,
+): Promise<SearchResult<MoSpeech>> {
+  const filters = speechFilters(p);
+  const leg = await bm25Leg(p, filters, offsetFor(page, pageSize), pageSize);
+  return {
+    hits: leg.hits,
+    total: leg.total,
+    page,
+    pageSize,
+    tookMs: leg.tookMs,
+    highlights: p.q ? leg.highlights : undefined,
+    mode: "bm25-only",
+  };
+}
+
+async function searchSpeechesRrf(
+  p: SearchSpeechesParams,
+  page: number,
+  pageSize: number,
+): Promise<SearchResult<MoSpeech>> {
+  const offset = offsetFor(page, pageSize);
+  const poolSize = Math.min(Math.max(pageSize * 5, RRF_POOL_FLOOR), RRF_POOL_CAP);
+
+  // Deep pagination: the fused pool can't span past `poolSize`. Fall back to
+  // BM25-only (it paginates natively via `from`/`size`) so users can keep
+  // clicking forward without empty pages.
+  if (offset >= poolSize) {
+    return searchSpeechesBm25(p, page, pageSize);
+  }
+
+  // Vectorise the query. If the embed service is unreachable, silently
+  // degrade to BM25-only — Q8 contract: never serve a stale or absent vector.
+  const q = p.q?.trim();
+  if (!q) return searchSpeechesBm25(p, page, pageSize);
+  const vector = await embedQuery(q);
+  if (!vector) return searchSpeechesBm25(p, page, pageSize);
+
+  const filters = speechFilters(p);
+  const [bm25, knn] = await Promise.all([
+    bm25Leg(p, filters, 0, poolSize),
+    knnLeg(vector, filters, poolSize),
+  ]);
+
+  // BM25 is the relevance gate. BGE-M3 produces a vector for any input
+  // (including gibberish), so kNN always returns its top-k — even for
+  // nonsense queries it surfaces 100 weakly-related "neighbours" at
+  // similarity scores ~0.74 (vs ~0.79 for real semantic matches). To avoid
+  // hallucinating results, kNN is only fused into the final list when BM25
+  // has found at least one lexical anchor. Typos with at least one BM25
+  // hit (e.g. "educatie" matching the archaic "educațiunii") still benefit
+  // from kNN's expansion.
+  const knnHitsForFusion = bm25.hits.length > 0 ? knn.hits : [];
+  const fused = fuseRrf([bm25.hits, knnHitsForFusion]);
+  const pageHits = fused.slice(offset, offset + pageSize);
+
+  // Highlights only exist for hits that BM25 saw. kNN-only hits render
+  // without a snippet — that's fine; the agenda title still gives context.
+  const highlights: Record<string, string> = {};
+  for (const hit of pageHits) {
+    const snippet = bm25.highlights[hit.record_id];
+    if (snippet) highlights[hit.record_id] = snippet;
+  }
+
+  // Total: take max of BM25's lexical total and the fused-pool size. This
+  // matters when BM25 finds few hits (e.g. typo / no-diacritic query) but
+  // kNN adds dozens of semantic neighbors — the user sees ~poolSize results
+  // on screen and "1 rezultat" in the header would be a lie. Past poolSize
+  // we trust BM25's total because that's what the deep-paging fallback can
+  // actually serve.
+  const total = Math.max(bm25.total, fused.length);
+
+  return {
+    hits: pageHits,
+    total,
+    page,
+    pageSize,
+    // Legs ran in parallel; report the slower one as the wall-clock cost.
+    tookMs: Math.max(bm25.tookMs, knn.tookMs),
+    highlights: Object.keys(highlights).length > 0 ? highlights : undefined,
+    mode: "rrf",
   };
 }
 
@@ -392,21 +561,40 @@ export async function searchSpeeches(
   const page = params.page ?? 1;
   const pageSize = clampPageSize(params.pageSize);
   return timed("searchSpeeches", { ...params, pageSize, page }, async () => {
-    // RRF mode is wired in a later phase (it needs the embed service).
-    // For v0 we always serve BM25; the rankFusion flag is accepted but a no-op
-    // when set to 'rrf' (silent degradation per docs/architecture.md).
-    const result = await searchSpeechesBm25(params, page, pageSize);
+    const useRrf = (params.rankFusion ?? "rrf") === "rrf" && Boolean(params.q?.trim());
+    const result = useRrf
+      ? await searchSpeechesRrf(params, page, pageSize)
+      : await searchSpeechesBm25(params, page, pageSize);
     return { result, esTookMs: result.tookMs, hitsTotal: result.total };
   });
 }
 
-// kNN-only ablation. Requires the embed service (EMBED_URL); when unavailable
-// throws so callers can surface a clear error rather than silently degrading.
+// kNN-only ablation: useful for debugging the embedding leg in isolation.
+// Throws on failure (no silent BM25 fallback) so callers can distinguish
+// "embedding service down" from "no semantic matches".
 export async function searchSpeechesKnn(
-  _params: SearchSpeechesParams,
+  params: SearchSpeechesParams,
 ): Promise<SearchResult<MoSpeech>> {
-  return timed("searchSpeechesKnn", {}, async () => {
-    throw new Error("searchSpeechesKnn: embedding service integration ships in a later phase");
+  const page = params.page ?? 1;
+  const pageSize = clampPageSize(params.pageSize);
+  return timed("searchSpeechesKnn", { ...params, pageSize, page }, async () => {
+    const q = params.q?.trim();
+    if (!q) throw new Error("searchSpeechesKnn: q is required");
+    const vector = await embedQuery(q);
+    if (!vector) throw new Error("searchSpeechesKnn: embed service unavailable (set EMBED_URL)");
+    const filters = speechFilters(params);
+    const offset = offsetFor(page, pageSize);
+    const total = pageSize * 5; // kNN doesn't have a natural "total" — cap at top 5 pages
+    const leg = await knnLeg(vector, filters, total);
+    const result: SearchResult<MoSpeech> = {
+      hits: leg.hits.slice(offset, offset + pageSize),
+      total: leg.hits.length,
+      page,
+      pageSize,
+      tookMs: leg.tookMs,
+      mode: "rrf", // a kNN-only run is conceptually a "vector" mode; we tag it `rrf` for now since the SearchResult enum is binary.
+    };
+    return { result, esTookMs: result.tookMs, hitsTotal: result.total };
   });
 }
 
