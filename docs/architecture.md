@@ -193,6 +193,65 @@ Layout: name + lifespan dateline → meta register (speeches / first / last / Wi
 
 The page does not filter on `is_substantive` — the whole stenographic record is shown, including procedural turns, because this is the archive surface, not the search surface.
 
+## Original PDFs
+
+The website surfaces a "Vezi PDF original" link on every document page that points at the original Monitorul Oficial PDF — the same bytes scraped upstream by `monitorul-ii fetch`. The bytes live in a **private** Cloudflare R2 bucket (S3-compatible). The bucket is never publicly readable; the website mediates every download.
+
+### Bucket key shape
+
+Upstream, `monitorul-ii`'s scraper (`scraper.py`, `Issue.filename`) names every PDF as:
+
+```
+{published_iso}_MO-P{part}-{issue}-{year}.pdf
+```
+
+Example: `2026-02-13_MO-PII-9c-2026.pdf`. We re-derive the key on every request from the indexed `MoDocument` rather than trusting the `s3_url_pdf` field in ES (which the upstream indexer leaves `null` today). The two will agree if the field is later populated; trusting the derivation also future-proofs against rename schemes.
+
+The derivation lives in [`src/lib/pdf.ts`](../src/lib/pdf.ts) (`pdfKeyForDocument`). It returns `null` when the document has no `published` date — the rare facsimile rows where the upstream pipeline couldn't pin a publication date. The link is hidden in those cases.
+
+### Presigned-URL redirect (no bucket exposure)
+
+The app **does not** stream PDF bytes through Next.js (Vercel egress would be wasteful for an archive serving multi-MB PDFs at long-tail rates). Instead:
+
+1. The user clicks "Vezi PDF original" → browser hits `/mo/[year]/[part]/[issue]/pdf`.
+2. The route handler ([`src/app/mo/[year]/[part]/[issue]/pdf/route.ts`](../src/app/mo/%5Byear%5D/%5Bpart%5D/%5Bissue%5D/pdf/route.ts), `force-dynamic`) resolves the document, derives the bucket key, and asks `presignPdfUrl()` for a SigV4-presigned GET URL valid for 5 minutes.
+3. The handler returns `302 Found` with `Location: <signed url>`. The browser follows the redirect and fetches the PDF directly from R2.
+
+The signing keys (`S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`) are server-only env vars; they never reach the browser. The R2 hostname (`*.r2.cloudflarestorage.com`) IS visible in the address bar after the redirect — that's an inherent property of presigned URLs. Hiding the hostname requires either a Cloudflare Worker on a custom domain (`archive.monitorul.ai` → bucket; the Worker validates the request and re-signs), or full-byte proxying through Next.js. We've chosen the redirect because it costs nothing in egress and the hostname leak is uninteresting (the bucket itself is unenumerable without creds).
+
+### SigV4 with `aws4fetch` (not the AWS SDK)
+
+[`aws4fetch`](https://github.com/mhart/aws4fetch) is a ~6KB edge-compatible SigV4 client. We use it instead of `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` because:
+
+- The AWS SDK adds ~250KB+ to the serverless cold start.
+- We only need one operation (presigned GET) — the full SDK is overkill.
+- `aws4fetch` runs unchanged on the Vercel Edge runtime if we ever move the route there (today the route is the default Node runtime).
+
+The signing call:
+
+```ts
+const url = new URL(`/${env.S3_BUCKET}/${encodeURIComponent(key)}`, env.S3_ENDPOINT);
+url.searchParams.set("X-Amz-Expires", "300");
+const signed = await aws.sign(url.toString(), { method: "GET", aws: { signQuery: true } });
+return signed.url;
+```
+
+`signQuery: true` puts the signature in query parameters (presigned URL form) rather than in `Authorization` headers — the only form a browser following a 302 can use.
+
+### TTL and caching
+
+5 minutes (`X-Amz-Expires=300`) is long enough for the browser to follow the redirect and start the download, short enough that a leaked URL is useless within minutes. The route handler is `force-dynamic` — every request mints a fresh signature. Caching the redirect would also cache the (expiring) URL, which is the wrong trade. SigV4 signing is microseconds; the cost is negligible.
+
+### Configuration and degradation
+
+All four `S3_*` env vars are optional. When any of `S3_ENDPOINT` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` / `S3_BUCKET` is missing:
+
+- `isPdfBucketConfigured()` returns `false`.
+- The document page hides the PDF link entirely.
+- The route handler returns `503 Service Unavailable` if hit directly.
+
+This lets search-only deploys (or CI) run without storage creds. `S3_REGION` defaults to `auto` (Cloudflare's recommendation; R2 ignores it but SigV4 requires _something_ in the string-to-sign).
+
 ## Caching and ISR invalidation
 
 - Detail pages → `force-static` with `revalidate: 3600` and `revalidateTag('mo-<grain>:<id>')`.

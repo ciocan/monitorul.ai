@@ -30,6 +30,19 @@ export const env = createEnv({
       .string()
       .optional()
       .transform((v) => v === "1"),
+    // S3-compatible storage for the original artefacts (PDF / MD / sidecar).
+    // Cloudflare R2 is the production target — point S3_ENDPOINT at the R2
+    // hostname (`https://<account>.r2.cloudflarestorage.com`) and SigV4 just
+    // works. The bucket itself stays PRIVATE: app-side reads go through the
+    // presigner in `src/lib/pdf.ts`, which mints short-lived (5 min) signed
+    // URLs server-side; access keys never leave the server. All four are
+    // optional so search-only deploys can run without storage creds — the
+    // PDF button on /mo/* pages is hidden when they're missing.
+    S3_ENDPOINT: z.url().optional(),
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    S3_BUCKET: z.string().min(1).optional(),
+    S3_REGION: z.string().default("auto"),
   },
   client: {
     NEXT_PUBLIC_SITE_URL: z.url().default("https://monitorul.ai"),

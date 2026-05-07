@@ -20,6 +20,7 @@
     "@next/mdx": "^16.2.5",
     "@t3-oss/env-nextjs": "^0.13.11",
     "@types/mdx": "^2.0.13",
+    "aws4fetch": "^1.0.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",

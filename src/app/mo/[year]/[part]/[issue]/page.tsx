@@ -1,3 +1,4 @@
+import { FileText } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,6 +13,7 @@ import {
   pluralRo,
   sessionTypeLabel,
 } from "@/lib/format";
+import { isPdfBucketConfigured, pdfKeyForDocument } from "@/lib/pdf";
 import { type ChildGrainHit, getDocument, listDocumentChildren } from "@/lib/search";
 import type {
   MoAgendaItem,
@@ -87,6 +89,13 @@ export default async function DocumentPage({ params }: PageProps) {
   const sessionDate = formatDate(doc.session_date);
   const publishedDate = formatDate(doc.published);
   const hasBody = children.some((c) => c.grain !== "agenda-items");
+  // PDF link is conditional: bucket creds must be configured AND the document
+  // must have a `published` date (the bucket key is derived from it). Rather
+  // than HEAD-checking the bucket on every render, we trust the upstream
+  // pipeline and let the redirect route 404 in the rare case the object is
+  // missing. The route handler at `/pdf` mints a fresh signed URL per request.
+  const pdfHref =
+    isPdfBucketConfigured() && pdfKeyForDocument(doc) ? `${canonicalPathFromParams(p)}/pdf` : null;
 
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
@@ -116,6 +125,7 @@ export default async function DocumentPage({ params }: PageProps) {
           />
         </dl>
         <DocumentCounts doc={doc} />
+        {pdfHref ? <PdfDownloadLink href={pdfHref} /> : null}
       </header>
 
       <section className="mt-10" aria-labelledby="cuprins">
@@ -214,6 +224,23 @@ function DocumentCounts({ doc }: { doc: MoDocument }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function PdfDownloadLink({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener"
+      className="group/pdf mt-8 inline-flex items-center gap-3 border border-border bg-paper-99 px-4 py-3 text-ink-16 transition-colors hover:bg-paper-96 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-30"
+    >
+      <FileText className="size-4 text-ink-45 transition-colors group-hover/pdf:text-ink-16" />
+      <span className="label-mono text-ink-16">Vezi PDF original</span>
+      <span aria-hidden className="font-mono-meta text-xs text-ink-45">
+        ↗
+      </span>
+    </a>
   );
 }
 

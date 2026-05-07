@@ -35,6 +35,17 @@ EMBED_CLOUD_URL=                          # `cloud` provider: OpenAI-compatible 
 EMBED_CLOUD_TOKEN=                        # `cloud` provider: bearer token
 EMBED_CLOUD_MODEL=bge-m3                  # model id sent in the payload (default bge-m3)
 QUERY_LOG_WRITE=                          # set to 1 to write search telemetry to monitorul_query_log
+
+# S3-compatible storage (Cloudflare R2 in prod) for the original PDFs.
+# Bucket stays PRIVATE — the server mints short-lived presigned URLs and
+# 302-redirects from /mo/<year>/<part>/<issue>/pdf. Leave blank for
+# search-only deployments; the PDF link is hidden when unset.
+S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_BUCKET=monitorul-ii
+S3_REGION=auto
+
 NEXT_PUBLIC_SITE_URL=https://monitorul.ai
 ```
 
@@ -48,6 +59,7 @@ Validated at startup by [`src/env.ts`](./src/env.ts) (via `@t3-oss/env-nextjs` +
 | -------------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/`                                                            | live          | civic-gazette landing with archive stats register, ISR 1h                                                                                                                                                                                                                  |
 | `/mo/[year]/[part]/[issue]`                                    | live          | document page — Cuprins (TOC) + inline Stenograma body (speeches grouped under each agenda item, in source order), JSON-LD, ISR 1h                                                                                                                                         |
+| `/mo/[year]/[part]/[issue]/pdf`                                | live          | route handler — 302-redirects to a 5-min SigV4-presigned R2 URL for the original PDF. Bucket stays private (creds never leave the server). Hidden from the document page when `S3_*` env vars aren't set.                                                                  |
 | `/cauta?q=…`                                                   | live          | hybrid speech search (BM25 + kNN/RRF), highlights, `noindex, follow`                                                                                                                                                                                                       |
 | `/politicieni/[slug]`                                          | live          | person profile — name, mandates, recent speeches, JSON-LD `Person`, ISR 1h. Linked conditionally from speech blocks (`speaker.person_id` is non-null only after the upstream `backfill --kind=persons` + `index --force --grain=mo-speeches` passes have run; ~20% today). |
 | `/politicieni`, `/comisii`, `/despre`, agenda/speech/vote/etc. | not yet wired | linked from chrome but ship in subsequent phases                                                                                                                                                                                                                           |
