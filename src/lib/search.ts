@@ -210,7 +210,9 @@ export async function listDocumentChildren(documentId: string): Promise<{
       size: 500,
       query: { bool: { filter: [filter] } },
       sort: [{ position_in_document: { order: "asc", missing: "_last" } }],
-      _source: { excludes: ["enrichments.embedding", "text"] },
+      // `text` is intentionally kept — the document playback page renders speech
+      // bodies inline. Embedding vectors stay out (1024 floats × N speeches).
+      _source: { excludes: ["enrichments.embedding"] },
     };
     const res = await esClient().search<unknown>(req);
     const agenda: MoAgendaItem[] = [];

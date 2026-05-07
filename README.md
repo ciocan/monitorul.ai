@@ -44,12 +44,12 @@ Validated at startup by [`src/env.ts`](./src/env.ts) (via `@t3-oss/env-nextjs` +
 
 ## Routes (current)
 
-| Path                                                           | Status        | Notes                                                                |
-| -------------------------------------------------------------- | ------------- | -------------------------------------------------------------------- |
-| `/`                                                            | live          | civic-gazette landing with archive stats register, ISR 1h            |
-| `/mo/[year]/[part]/[issue]`                                    | live          | document page, JSON-LD, canonical, ISR 1h                            |
-| `/cauta?q=…`                                                   | live          | hybrid speech search (BM25 + kNN/RRF), highlights, `noindex, follow` |
-| `/politicieni`, `/comisii`, `/despre`, agenda/speech/vote/etc. | not yet wired | linked from chrome but ship in subsequent phases                     |
+| Path                                                           | Status        | Notes                                                                                                                              |
+| -------------------------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                                                            | live          | civic-gazette landing with archive stats register, ISR 1h                                                                          |
+| `/mo/[year]/[part]/[issue]`                                    | live          | document page — Cuprins (TOC) + inline Stenograma body (speeches grouped under each agenda item, in source order), JSON-LD, ISR 1h |
+| `/cauta?q=…`                                                   | live          | hybrid speech search (BM25 + kNN/RRF), highlights, `noindex, follow`                                                               |
+| `/politicieni`, `/comisii`, `/despre`, agenda/speech/vote/etc. | not yet wired | linked from chrome but ship in subsequent phases                                                                                   |
 
 All ES interaction goes through [`src/lib/search.ts`](./src/lib/search.ts) — the only path from app code to Elasticsearch.
 

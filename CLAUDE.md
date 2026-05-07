@@ -36,7 +36,7 @@ No test runner is configured.
 - **Path alias**: `@/*` → `src/*` (see `tsconfig.json`). Aliases for `components`, `ui`, `lib`, `hooks`, `utils` are defined in `components.json`.
 - **`cn` helper**: `src/lib/utils.ts` exports `cn(...inputs)` = `twMerge(clsx(inputs))`. Use it for all conditional class composition.
 - **Fonts** are loaded in `src/app/layout.tsx` via `next/font/google` and exposed as CSS variables: `--font-sans` (Public Sans), `--font-display` (Source Serif 4), `--font-mono` (IBM Plex Mono). The three-voice system is documented in `DESIGN.md` §3.
-- **Routes (Next.js 16 App Router)**: `/` (landing, ISR 1h, archive stats register), `/mo/[year]/[part]/[issue]` (document page, ISR 1h, JSON-LD `Article` + `GovernmentService`), `/cauta` (speech search, `force-dynamic`, `noindex,follow`). Other grain routes ship in subsequent phases.
+- **Routes (Next.js 16 App Router)**: `/` (landing, ISR 1h, archive stats register), `/mo/[year]/[part]/[issue]` (document page — Cuprins TOC + inline Stenograma body that groups speeches under each agenda item in `position_in_document` order; ISR 1h, JSON-LD `Article` + `GovernmentService`), `/cauta` (speech search, `force-dynamic`, `noindex,follow`). Until per-grain detail routes ship, the Cuprins links to in-page anchors (`#agenda-<ord>`) and individual speeches are addressable via `#discurs-<position_in_document>`. Other grain routes ship in subsequent phases.
 
 **UI rule (non-negotiable):** before writing any new JSX for an interactive primitive, check `src/components/ui/` and the `@shadcn` registry first. If a shadcn primitive exists, use it — even if you have to wrap it. Hand-rolling is reserved for **signature components** that have no shadcn analogue (e.g. `Dateline`, `StatsRegister`).
 

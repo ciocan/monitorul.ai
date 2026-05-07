@@ -12,8 +12,15 @@ import {
   pluralRo,
   sessionTypeLabel,
 } from "@/lib/format";
-import { getDocument, listDocumentChildren } from "@/lib/search";
-import type { MoAgendaItem, MoDocument } from "@/lib/types";
+import { type ChildGrainHit, getDocument, listDocumentChildren } from "@/lib/search";
+import type {
+  MoAgendaItem,
+  MoDocument,
+  MoInterpellation,
+  MoQuestion,
+  MoSpeech,
+  MoVote,
+} from "@/lib/types";
 
 // SEO commitment per docs/elasticsearch-indexing.md §Q7: every document URL is
 // `index, follow`, ISR-cached for 1h, with canonical pointing at the slug-form
@@ -76,9 +83,10 @@ export default async function DocumentPage({ params }: PageProps) {
   const doc = await loadDocument(p);
   if (!doc) notFound();
 
-  const { agenda } = await listDocumentChildren(doc.document_id);
+  const { agenda, children } = await listDocumentChildren(doc.document_id);
   const sessionDate = formatDate(doc.session_date);
   const publishedDate = formatDate(doc.published);
+  const hasBody = children.some((c) => c.grain !== "agenda-items");
 
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
@@ -114,8 +122,17 @@ export default async function DocumentPage({ params }: PageProps) {
         <h2 id="cuprins" className="label-mono mb-4 text-ink-30">
           Cuprins
         </h2>
-        {agenda.length === 0 ? <EmptyAgenda doc={doc} /> : <AgendaList agenda={agenda} doc={doc} />}
+        {agenda.length === 0 ? <EmptyAgenda doc={doc} /> : <AgendaList agenda={agenda} />}
       </section>
+
+      {hasBody ? (
+        <section className="mt-12" aria-labelledby="stenograma">
+          <h2 id="stenograma" className="label-mono mb-6 text-ink-30">
+            Stenograma
+          </h2>
+          <DocumentBody entries={children} />
+        </section>
+      ) : null}
 
       <RecordIdentity doc={doc} />
     </article>
@@ -200,11 +217,14 @@ function DocumentCounts({ doc }: { doc: MoDocument }) {
   );
 }
 
-function AgendaList({ agenda, doc }: { agenda: MoAgendaItem[]; doc: MoDocument }) {
+function AgendaList({ agenda }: { agenda: MoAgendaItem[] }) {
   return (
     <ol className="divide-y divide-border border-y border-border">
       {agenda.map((item) => {
-        const href = `/mo/${doc.year}/${doc.part}/${doc.issue}/agenda/${item.ordinal}`;
+        // In-page anchor — the dedicated /agenda/<ord> route ships in a later
+        // phase. Until then, jumping to the inline section keeps the Cuprins
+        // useful as a table of contents.
+        const href = `#agenda-${item.ordinal}`;
         return (
           <li key={item.record_id}>
             <Link
@@ -247,6 +267,182 @@ function AgendaList({ agenda, doc }: { agenda: MoAgendaItem[]; doc: MoDocument }
         );
       })}
     </ol>
+  );
+}
+
+// Renders the document playback in source order. ES sorts children by
+// `position_in_document` ASC, so each agenda item appears immediately before
+// its speeches / votes / interpellations / questions. We open a new section at
+// every agenda boundary; everything else gets a grain-specific block.
+function DocumentBody({ entries }: { entries: ChildGrainHit[] }) {
+  type Section = { agenda: MoAgendaItem | null; entries: ChildGrainHit[] };
+  const sections: Section[] = [];
+  let current: Section | null = null;
+  for (const child of entries) {
+    if (child.grain === "agenda-items") {
+      current = { agenda: child, entries: [] };
+      sections.push(current);
+      continue;
+    }
+    if (!current) {
+      current = { agenda: null, entries: [] };
+      sections.push(current);
+    }
+    current.entries.push(child);
+  }
+  return (
+    <div className="space-y-12">
+      {sections.map((section, i) => (
+        <AgendaSection
+          key={section.agenda?.record_id ?? `orphan-${i}`}
+          agenda={section.agenda}
+          entries={section.entries}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AgendaSection({
+  agenda,
+  entries,
+}: {
+  agenda: MoAgendaItem | null;
+  entries: ChildGrainHit[];
+}) {
+  const speechCount = entries.filter((e) => e.grain === "speeches").length;
+  const anchorId = agenda ? `agenda-${agenda.ordinal}` : undefined;
+  return (
+    <section id={anchorId} aria-labelledby={anchorId ? `${anchorId}-title` : undefined}>
+      {agenda ? (
+        <header className="border-t-2 border-ink-16 pt-4">
+          <p className="label-mono text-ink-45">
+            <span className="font-mono-meta text-ink-30" data-tabular-nums="">
+              {String(agenda.ordinal).padStart(2, "0")}
+            </span>
+            {agendaCategoryLabel(agenda.category) ? (
+              <> · {agendaCategoryLabel(agenda.category)}</>
+            ) : null}
+            {agendaOutcomeLabel(agenda.outcome) ? (
+              <> · {agendaOutcomeLabel(agenda.outcome)}</>
+            ) : null}
+          </p>
+          <h3
+            id={anchorId ? `${anchorId}-title` : undefined}
+            className="font-display mt-2 text-2xl leading-snug text-ink-16"
+          >
+            {agenda.title}
+          </h3>
+          {speechCount > 0 ? (
+            <p className="mt-3 label-mono text-ink-45">
+              {pluralRo(speechCount, "discurs", "discursuri", "de discursuri")}
+            </p>
+          ) : null}
+        </header>
+      ) : null}
+      <ol className="mt-6 divide-y divide-border border-y border-border">
+        {entries.map((entry) => (
+          <BodyEntry key={entry.record_id} entry={entry} />
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function BodyEntry({ entry }: { entry: ChildGrainHit }) {
+  switch (entry.grain) {
+    case "speeches":
+      return <SpeechBlock speech={entry} />;
+    case "votes":
+      return <VoteBlock vote={entry} />;
+    case "interpellations":
+      return <InterpellationBlock item={entry} />;
+    case "questions":
+      return <QuestionBlock item={entry} />;
+    default:
+      return null;
+  }
+}
+
+function speakerLine(speech: MoSpeech): string {
+  const { speaker } = speech;
+  const name = speaker.name_search || speaker.name_raw;
+  const title = speaker.title?.trim();
+  return title ? `${title} ${name}` : name;
+}
+
+function SpeechBlock({ speech }: { speech: MoSpeech }) {
+  const anchorId = `discurs-${speech.position_in_document ?? speech.position_in_agenda}`;
+  const meta = [
+    speech.speaker.role,
+    speech.speaker.party_group_at_time,
+    speech.speaker.delivery_mode === "written" ? "intervenție scrisă" : null,
+  ].filter(Boolean);
+  return (
+    <li id={anchorId} className="px-1 py-6 target:bg-paper-96 target:-mx-1 target:px-2">
+      <p className="font-mono text-base font-semibold leading-tight text-ink-16">
+        {speakerLine(speech)}
+      </p>
+      {meta.length > 0 ? <p className="mt-1 label-mono text-ink-45">{meta.join(" · ")}</p> : null}
+      {speech.text ? (
+        <div className="mt-3 max-w-prose space-y-3 text-base leading-relaxed text-ink-30">
+          {speech.text
+            .split(/\n\n+/)
+            .map((para, i) => (para.trim() ? <p key={i}>{para.trim()}</p> : null))}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function VoteBlock({ vote }: { vote: MoVote }) {
+  const counts = vote.counts;
+  const summary = [
+    counts.for_unanimous ? "unanim pentru" : counts.for != null ? `${counts.for} pentru` : null,
+    counts.against != null ? `${counts.against} contra` : null,
+    counts.abstain != null ? `${counts.abstain} abțineri` : null,
+  ].filter(Boolean);
+  return (
+    <li className="px-1 py-5">
+      <p className="label-mono text-ink-45">
+        Vot{agendaOutcomeLabel(vote.outcome) ? ` · ${agendaOutcomeLabel(vote.outcome)}` : ""}
+      </p>
+      <p className="mt-2 text-sm font-semibold leading-snug text-ink-16">{vote.agenda_title}</p>
+      {summary.length > 0 ? (
+        <p className="font-mono-meta mt-2 text-sm text-ink-30" data-tabular-nums="">
+          {summary.join(" · ")}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+function InterpellationBlock({ item }: { item: MoInterpellation }) {
+  return (
+    <li className="px-1 py-5">
+      <p className="label-mono text-ink-45">Interpelare</p>
+      <p className="mt-2 font-mono text-base font-semibold leading-tight text-ink-16">
+        {item.questioner.name}
+      </p>
+      {item.topic ? <p className="mt-2 text-sm text-ink-30">{item.topic}</p> : null}
+      {item.question_text ? (
+        <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-30">{item.question_text}</p>
+      ) : null}
+    </li>
+  );
+}
+
+function QuestionBlock({ item }: { item: MoQuestion }) {
+  return (
+    <li className="px-1 py-5">
+      <p className="label-mono text-ink-45">
+        Întrebare scrisă{item.regnum ? ` · ${item.regnum}` : ""}
+      </p>
+      <p className="mt-2 font-mono text-base font-semibold leading-tight text-ink-16">
+        {item.questioner.name}
+      </p>
+      {item.topic ? <p className="mt-2 text-sm text-ink-30">{item.topic}</p> : null}
+    </li>
   );
 }
 

@@ -105,7 +105,7 @@ Functions (current shape):
 
 - `searchSpeeches({ q, speakerPersonId, chamber, dateFrom, dateTo, refBills, topics, isSubstantive, page, pageSize, rankFusion })` — multi_match BM25 over `text^2` / `agenda_title^1.5` / `speaker.name_search`, fused with kNN over `enrichments.embedding` via RRF (default — see below).
 - `searchSpeechesKnn` — pure kNN ablation; throws (no BM25 fallback) when the embed service is unreachable so callers can distinguish misconfig from "no semantic matches".
-- `listDocumentChildren(documentId)` — multi-grain interleave for `/mo/<id>` playback, sorted by `position_in_document` ASC.
+- `listDocumentChildren(documentId)` — multi-grain interleave for `/mo/<id>` playback, sorted by `position_in_document` ASC. Speech `text` is **kept** in the response (only `enrichments.embedding` is excluded) so the document page can render speech bodies inline; with ~50 speeches per stenogram and ISR 1h, the per-page payload is acceptable.
 - `getDocument` / `getAgendaItem` / `getSpeech` / `getReport` — single lookup by `record_id`.
 - `listDocumentsByDate(date, chamber?)` / `listCommitteeMeetings(committeeId, dateFrom?)`
 - `personPage(slug)` — composite payload for `/politicieni/<slug>`: person record + recent substantive speeches + speech-count / first-/last-speech-date aggregations.
@@ -171,6 +171,15 @@ The core math is identical; the policy differs in four places, all deliberate:
 | RRF window depth     | `max(page × pageSize, 100)` — scales with page        | `max(pageSize × 5, 100)`, capped at 200, BM25-only past that — public-traffic cost ceiling          |
 | BM25=0 → drop kNN    | not gated                                             | gated — suppresses kNN hallucination on gibberish public-input                                      |
 | `total` semantics    | `bm25.total` (mode-stable across `bm25-only` ↔ `rrf`) | `max(bm25.total, fused.length)` (matches what's actually displayed when kNN saves a low-BM25 query) |
+
+## Document page playback
+
+`/mo/[year]/[part]/[issue]` renders two stacked sections:
+
+1. **Cuprins (TOC)** — one row per agenda item with category / outcome / cited-bills metadata. Until the dedicated `/agenda/<ord>` route ships, each row links to an in-page anchor (`#agenda-<ord>`).
+2. **Stenograma (body)** — for each agenda item (in `position_in_document` ASC), a section header + an ordered list of every child record under it: speeches (full text, paragraph-split on blank lines, addressable as `#discurs-<position_in_document>`), votes (outcome + counts), interpellations (questioner / topic / question text), and questions (regnum / questioner / topic). Children that arrive before the first agenda boundary fall into an unlabelled leading section.
+
+The page does not filter on `is_substantive` — the whole stenographic record is shown, including procedural turns, because this is the archive surface, not the search surface.
 
 ## Caching and ISR invalidation
 
