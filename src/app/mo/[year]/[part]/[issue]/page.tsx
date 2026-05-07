@@ -378,10 +378,26 @@ function SpeechBlock({ speech }: { speech: MoSpeech }) {
     speech.speaker.party_group_at_time,
     speech.speaker.delivery_mode === "written" ? "intervenție scrisă" : null,
   ].filter(Boolean);
+  // `speaker.person_id` is the same string as the person record's `slug` —
+  // both are minted upstream from the canonical name. Verified against the
+  // live `mo-persons` index. Today only ~20% of speeches have person_id
+  // populated (upstream backfill is in progress), so most names render as
+  // plain text; links appear automatically as the backfill catches up.
+  const personSlug = speech.speaker.person_id;
+  const speaker = speakerLine(speech);
   return (
     <li id={anchorId} className="px-1 py-6 target:bg-paper-96 target:-mx-1 target:px-2">
       <p className="font-mono text-base font-semibold leading-tight text-ink-16">
-        {speakerLine(speech)}
+        {personSlug ? (
+          <Link
+            href={`/politicieni/${personSlug}`}
+            className="underline decoration-paper-91 underline-offset-4 hover:decoration-ink-30"
+          >
+            {speaker}
+          </Link>
+        ) : (
+          speaker
+        )}
       </p>
       {meta.length > 0 ? <p className="mt-1 label-mono text-ink-45">{meta.join(" · ")}</p> : null}
       {speech.text ? (

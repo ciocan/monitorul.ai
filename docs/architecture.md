@@ -172,6 +172,18 @@ The core math is identical; the policy differs in four places, all deliberate:
 | BM25=0 → drop kNN    | not gated                                             | gated — suppresses kNN hallucination on gibberish public-input                                      |
 | `total` semantics    | `bm25.total` (mode-stable across `bm25-only` ↔ `rrf`) | `max(bm25.total, fused.length)` (matches what's actually displayed when kNN saves a low-BM25 query) |
 
+## Person pages
+
+`/politicieni/[slug]` is the citation-grade fiche for a single politician. The page calls `personPage(slug)` (see [`src/lib/search.ts`](../src/lib/search.ts)) which composes:
+
+- A direct `_id` lookup on `mo-persons` — the upstream pipeline mints `_id`, `id`, and `slug` to the same string (e.g. `ciolacu-marcel`), so URL slug = ES doc id.
+- A 10-row recent-speeches list filtered by `speaker.person_id` and `is_substantive: true`, sorted by `session_date` desc.
+- Aggregations for `speech_count`, `first_speech_date`, `last_speech_date` (used as fallback when the upstream `MoPerson.stats` block is missing).
+
+Layout: name + lifespan dateline → meta register (speeches / first / last / Wikidata) → mandates list → recent speeches list (each row anchors back to `/mo/<year>/<part>/<issue>#discurs-<position_in_document>` so the citation lands on the exact speech). JSON-LD emits a `Person` node with `name`, `alternateName` (aliases), `birthDate`, `sameAs` (Wikidata URL when QID known).
+
+**Speaker→person link gate.** Speech blocks on the document page wrap the speaker name in a `<Link>` only when `speaker.person_id` is non-null. The upstream linking pass (`monitorul-ii backfill --kind=persons` + `monitorul-ii index --force --grain=mo-speeches`) is what populates that field — running on the corpus right now. While it's mid-pass, most speakers render as plain text and the URL is unreachable; as soon as a speech is linked, the same render path produces a working link with no frontend revisit. `/politicieni/<slug>` itself is reachable for any person record (13K+ today), independent of the linking pass.
+
 ## Document page playback
 
 `/mo/[year]/[part]/[issue]` renders two stacked sections:
