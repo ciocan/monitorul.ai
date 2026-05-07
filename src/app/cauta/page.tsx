@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { SiteSearch } from "@/components/site-search";
 import { formatCount, formatDate } from "@/lib/format";
@@ -64,8 +65,37 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         </p>
       </header>
 
-      {q ? <SearchResults q={q} page={page} /> : <EmptyQuery />}
+      {q ? (
+        <Suspense key={`${q}|${page}`} fallback={<SearchResultsSkeleton />}>
+          <SearchResults q={q} page={page} />
+        </Suspense>
+      ) : (
+        <EmptyQuery />
+      )}
     </div>
+  );
+}
+
+function SearchResultsSkeleton() {
+  return (
+    <section className="mt-10" aria-busy="true" aria-live="polite">
+      <div className="flex items-baseline justify-between gap-4">
+        <p className="label-mono text-ink-30">Caut…</p>
+        <p className="label-mono text-ink-45" data-tabular-nums="">
+          <span className="text-ink-30">Hibrid</span> · — ms
+        </p>
+      </div>
+      <ol className="mt-6 divide-y divide-border border-y border-border" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, i) => (
+          <li key={i} className="px-1 py-5">
+            <div className="h-2 w-48 animate-pulse bg-paper-91" />
+            <div className="mt-3 h-4 w-2/5 animate-pulse bg-paper-91" />
+            <div className="mt-3 h-3 w-11/12 max-w-prose animate-pulse bg-paper-91/70" />
+            <div className="mt-2 h-3 w-3/4 max-w-prose animate-pulse bg-paper-91/70" />
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

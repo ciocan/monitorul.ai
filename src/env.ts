@@ -11,7 +11,20 @@ export const env = createEnv({
       .string()
       .optional()
       .transform((v) => v === "1"),
+    // Embed provider switch. `local` calls the FastAPI service at EMBED_URL
+    // (default for dev against the monitorul-ii box). `cloud` calls a hosted
+    // OpenAI-compatible /v1/embeddings endpoint — the path used on Vercel,
+    // where the local embedder is unreachable. Toggle by flipping this var
+    // in .env.local; per-provider creds can stay populated either way.
+    EMBED_PROVIDER: z.enum(["local", "cloud"]).default("local"),
     EMBED_URL: z.url().optional(),
+    EMBED_CLOUD_URL: z.url().optional(),
+    EMBED_CLOUD_TOKEN: z.string().min(1).optional(),
+    // Model id sent in the OpenAI-compatible payload. Stays bge-m3 because the
+    // index's `enrichments.embedding` is BGE-M3 (1024-dim); changing this
+    // silently breaks similarity. Override only if your provider names the
+    // same BGE-M3 weights differently (e.g. `BAAI/bge-m3`).
+    EMBED_CLOUD_MODEL: z.string().min(1).default("bge-m3"),
     // Best-effort write of search telemetry to monitorul_query_log. Off unless "1".
     QUERY_LOG_WRITE: z
       .string()

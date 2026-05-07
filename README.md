@@ -28,13 +28,19 @@ Bun is the runtime (Next is invoked via `bun --bun`).
 ```
 ES_URL=https://es.example.com:9200
 ES_API_KEY=<read-only "monitorul_reader" API key minted by monitorul-ii es-init>
-ES_VERIFY_CERTS=                     # leave unset for self-signed; set to 1 only on managed ES
-EMBED_URL=http://127.0.0.1:8000      # optional; only required for hybrid (RRF) search
-QUERY_LOG_WRITE=                     # set to 1 to write search telemetry to monitorul_query_log
+ES_VERIFY_CERTS=                          # leave unset for self-signed; set to 1 only on managed ES
+EMBED_PROVIDER=local                      # local | cloud — picks the embed backend for hybrid search
+EMBED_URL=http://127.0.0.1:8000           # `local` provider: FastAPI embedder (monitorul-ii)
+EMBED_CLOUD_URL=                          # `cloud` provider: OpenAI-compatible /v1/embeddings URL
+EMBED_CLOUD_TOKEN=                        # `cloud` provider: bearer token
+EMBED_CLOUD_MODEL=bge-m3                  # model id sent in the payload (default bge-m3)
+QUERY_LOG_WRITE=                          # set to 1 to write search telemetry to monitorul_query_log
 NEXT_PUBLIC_SITE_URL=https://monitorul.ai
 ```
 
-Validated at startup by [`src/env.ts`](./src/env.ts) (via `@t3-oss/env-nextjs` + Zod). `next dev` and `next build` fail fast on missing or malformed values. Set `SKIP_ENV_VALIDATION=1` to bypass (useful for lint-only CI). The `monitorul_reader` key and the optional embedding service both come from the [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) repo. `NEXT_PUBLIC_SITE_URL` controls absolute canonical URLs and JSON-LD `@id` values.
+Validated at startup by [`src/env.ts`](./src/env.ts) (via `@t3-oss/env-nextjs` + Zod). `next dev` and `next build` fail fast on missing or malformed values. Set `SKIP_ENV_VALIDATION=1` to bypass (useful for lint-only CI). The `monitorul_reader` key and the local embedder both come from the [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) repo; `NEXT_PUBLIC_SITE_URL` controls absolute canonical URLs and JSON-LD `@id` values.
+
+**Embed provider toggle.** `EMBED_PROVIDER=local` (default) calls the FastAPI embedder at `EMBED_URL` — the dev path against the monitorul-ii box. `EMBED_PROVIDER=cloud` calls any OpenAI-compatible `/v1/embeddings` endpoint that serves BGE-M3 (1024-dim) at `EMBED_CLOUD_URL` with `Authorization: Bearer $EMBED_CLOUD_TOKEN` — required when running on Vercel where the local embedder is unreachable. Both sets of creds can stay populated in `.env.local`; flip the single `EMBED_PROVIDER` line to switch. Either provider missing creds → embed returns null → search silently degrades to BM25.
 
 ## Routes (current)
 
