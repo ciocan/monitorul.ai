@@ -35,14 +35,23 @@ No test runner is configured.
 - **shadcn/ui** with a non-default style: `components.json` uses `"style": "radix-lyra"` and `"baseColor": "neutral"`. Generated UI components live in `src/components/ui/` and import `Slot` from `radix-ui` (the umbrella package), not `@radix-ui/react-slot`.
 - **Path alias**: `@/*` → `src/*` (see `tsconfig.json`). Aliases for `components`, `ui`, `lib`, `hooks`, `utils` are defined in `components.json`.
 - **`cn` helper**: `src/lib/utils.ts` exports `cn(...inputs)` = `twMerge(clsx(inputs))`. Use it for all conditional class composition.
-- **Fonts** are loaded in `src/app/layout.tsx` via `next/font/google` and exposed as CSS variables: `--font-sans` (Figtree), `--font-heading` (Noto Sans), `--font-geist-sans`, `--font-geist-mono`. Match those variable names when adding theme tokens in `globals.css`.
+- **Fonts** are loaded in `src/app/layout.tsx` via `next/font/google` and exposed as CSS variables: `--font-sans` (Public Sans), `--font-display` (Source Serif 4), `--font-mono` (IBM Plex Mono). The three-voice system is documented in `DESIGN.md` §3.
+- **Routes (Next.js 16 App Router)**: `/` (landing, ISR 1h, archive stats register), `/mo/[year]/[part]/[issue]` (document page, ISR 1h, JSON-LD `Article` + `GovernmentService`), `/cauta` (speech search, `force-dynamic`, `noindex,follow`). Other grain routes ship in subsequent phases.
 
-**UI rule:** always reach for a shadcn primitive (`button`, `input`, `card`, `data-table`-pattern via `table` + `@tanstack/react-table`, `dropdown-menu`, `tabs`, `tooltip`, `badge`, `select`, `separator`, `skeleton`, …) before hand-rolling a component. `bunx --bun shadcn@latest add <name>` to install one.
+**UI rule (non-negotiable):** before writing any new JSX for an interactive primitive, check `src/components/ui/` and the `@shadcn` registry first. If a shadcn primitive exists, use it — even if you have to wrap it. Hand-rolling is reserved for **signature components** that have no shadcn analogue (e.g. `Dateline`, `StatsRegister`).
+
+- **Already installed** (`src/components/ui/`): `button`, `input`, `input-group` (+ `InputGroupAddon` / `InputGroupInput` / `InputGroupButton` / `InputGroupText`), `kbd` (+ `KbdGroup`), `textarea`, `empty` (reserved for the search-results no-matches page; the document-page agenda absence stays as a quiet inline note, not an `Empty` block — see DESIGN.md "no illustrations" Don't).
+- **Likely needed soon** — install with `bunx --bun shadcn@latest add <name>`: `card`, `badge`, `separator`, `skeleton`, `table`, `tabs`, `dropdown-menu`, `tooltip`, `select`, `breadcrumb`, `field`, `pagination`, `popover`, `dialog`.
+- **Workflow:** run the `add` command. **When prompted to overwrite an existing file, decline (`n`)** — the existing file in this repo has been adjusted to project conventions and overwriting destroys those edits. The CLI may still install transitive deps you didn't ask for (e.g. `input-group` pulls in `textarea`); that's fine.
+- **Style:** `components.json` pins `"style": "radix-lyra"` and `"baseColor": "neutral"`. Generated components import `Slot` from `radix-ui` (the umbrella package), not `@radix-ui/react-slot`. Don't switch styles.
+- **When NOT to use a shadcn primitive:** purely typographic / editorial constructs that _are_ the design system's signature voice — `Dateline`, the landing's typeset register, mono uppercase labels (`label-mono` is a CSS class, not a component). These belong in `src/components/`, not in `src/components/ui/`.
+- **Tokens:** every shadcn primitive must read from the project's tokens (`paper-99`, `paper-96`, `paper-91`, `ink-16`, `ink-30`, `ink-45`, `azure-3`, `alert-civic`) via the existing semantic aliases (`bg-background`, `border-input`, `text-foreground`, etc.) which `globals.css` maps onto our scale. Don't hardcode hex / oklch values inside components.
+
+**ES rule:** every read goes through [`src/lib/search.ts`](src/lib/search.ts). No direct `@elastic/elasticsearch` calls in pages or route handlers. Function set mirrors the upstream `monitorul_ii.elasticsearch.queries` module and inherits its caps (`pageSize ≤ 50`, `isSubstantive=true` default). Grain shapes live in [`src/lib/types.ts`](src/lib/types.ts); the deeper field-by-field reference is [`docs/architecture.md`](docs/architecture.md). Self-hosted ES with self-signed cert is the default — `ES_VERIFY_CERTS=1` only when the cluster has a public chain.
 
 ## Code Quality
 
 **After meaningful feature changes, update `README.md` (user-facing), `CLAUDE.md` (this file but keep it concise), and `docs/architecture.md` (deep dives).** "Meaningful" = a new feature, a new behavior or default, a new module / page / route, a new external dependency, or anything a future user/agent would otherwise have to read the diff to discover. Trivial bug fixes and pure refactors don't need a doc update. **Keep CLAUDE.md scannable** — push detailed mechanics into `docs/architecture.md` and link from here.
-
 
 ```bash
 bun run fmt

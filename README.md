@@ -28,11 +28,23 @@ Bun is the runtime (Next is invoked via `bun --bun`).
 ```
 ES_URL=https://es.example.com:9200
 ES_API_KEY=<read-only "monitorul_reader" API key minted by monitorul-ii es-init>
-ES_VERIFY_CERTS=1
+ES_VERIFY_CERTS=                     # leave unset for self-signed; set to 1 only on managed ES
 EMBED_URL=http://127.0.0.1:8000      # optional; only required for hybrid (RRF) search
+NEXT_PUBLIC_SITE_URL=https://monitorul.ai
 ```
 
-The `monitorul_reader` key and the optional embedding service both come from the [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) repo.
+The `monitorul_reader` key and the optional embedding service both come from the [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) repo. `NEXT_PUBLIC_SITE_URL` controls absolute canonical URLs and JSON-LD `@id` values.
+
+## Routes (current)
+
+| Path                                                           | Status        | Notes                                                              |
+| -------------------------------------------------------------- | ------------- | ------------------------------------------------------------------ |
+| `/`                                                            | live          | civic-gazette landing with archive stats register, ISR 1h          |
+| `/mo/[year]/[part]/[issue]`                                    | live          | document page, JSON-LD, canonical, ISR 1h                          |
+| `/cauta?q=…`                                                   | live          | speech BM25 search with highlights + pagination, `noindex, follow` |
+| `/politicieni`, `/comisii`, `/despre`, agenda/speech/vote/etc. | not yet wired | linked from chrome but ship in subsequent phases                   |
+
+All ES interaction goes through [`src/lib/search.ts`](./src/lib/search.ts) — the only path from app code to Elasticsearch.
 
 ## Releases
 

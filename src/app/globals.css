@@ -8,8 +8,22 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-heading);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+
+  --color-paper-99: var(--paper-99);
+  --color-paper-96: var(--paper-96);
+  --color-paper-91: var(--paper-91);
+  --color-ink-16: var(--ink-16);
+  --color-ink-30: var(--ink-30);
+  --color-ink-45: var(--ink-45);
+  --color-azure-1: var(--azure-1);
+  --color-azure-2: var(--azure-2);
+  --color-azure-3: var(--azure-3);
+  --color-azure-4: var(--azure-4);
+  --color-azure-5: var(--azure-5);
+  --color-alert-civic: var(--alert-civic);
+
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,82 +53,102 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Sharp corners by default; the hairline radius is reserved for chips/badges. */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+  --radius-hairline: 2px;
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.828 0.111 230.318);
-  --chart-2: oklch(0.685 0.169 237.323);
-  --chart-3: oklch(0.588 0.158 241.966);
-  --chart-4: oklch(0.5 0.134 242.749);
-  --chart-5: oklch(0.443 0.11 240.79);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Cool civic axis (hue 240). Pure white/black are forbidden by the DESIGN.md
+	   "Cool Axis Rule"; even the lightest paper tone tints toward 240. */
+  --paper-99: oklch(0.99 0.005 240);
+  --paper-96: oklch(0.965 0.006 240);
+  --paper-91: oklch(0.91 0.008 240);
+  --ink-16: oklch(0.16 0.012 240);
+  --ink-30: oklch(0.32 0.012 240);
+  --ink-45: oklch(0.45 0.01 240);
+  --azure-1: oklch(0.828 0.04 235);
+  --azure-2: oklch(0.74 0.09 237);
+  --azure-3: oklch(0.62 0.14 240);
+  --azure-4: oklch(0.5 0.13 242);
+  --azure-5: oklch(0.4 0.11 244);
+  --alert-civic: oklch(0.55 0.22 25);
+
+  --background: var(--paper-99);
+  --foreground: var(--ink-16);
+  --card: var(--paper-99);
+  --card-foreground: var(--ink-16);
+  --popover: var(--paper-99);
+  --popover-foreground: var(--ink-16);
+  --primary: var(--ink-16);
+  --primary-foreground: var(--paper-99);
+  --secondary: var(--paper-96);
+  --secondary-foreground: var(--ink-16);
+  --muted: var(--paper-96);
+  --muted-foreground: var(--ink-45);
+  --accent: var(--paper-96);
+  --accent-foreground: var(--ink-16);
+  --destructive: var(--alert-civic);
+  --border: var(--paper-91);
+  --input: var(--paper-91);
+  --ring: var(--azure-3);
+  --chart-1: var(--azure-1);
+  --chart-2: var(--azure-2);
+  --chart-3: var(--azure-3);
+  --chart-4: var(--azure-4);
+  --chart-5: var(--azure-5);
+  --radius: 0;
+  --sidebar: var(--paper-96);
+  --sidebar-foreground: var(--ink-16);
+  --sidebar-primary: var(--ink-16);
+  --sidebar-primary-foreground: var(--paper-99);
+  --sidebar-accent: var(--paper-91);
+  --sidebar-accent-foreground: var(--ink-16);
+  --sidebar-border: var(--paper-91);
+  --sidebar-ring: var(--azure-3);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.828 0.111 230.318);
-  --chart-2: oklch(0.685 0.169 237.323);
-  --chart-3: oklch(0.588 0.158 241.966);
-  --chart-4: oklch(0.5 0.134 242.749);
-  --chart-5: oklch(0.443 0.11 240.79);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --paper-99: oklch(0.18 0.012 240);
+  --paper-96: oklch(0.22 0.012 240);
+  --paper-91: oklch(0.3 0.012 240);
+  --ink-16: oklch(0.96 0.005 240);
+  --ink-30: oklch(0.82 0.008 240);
+  --ink-45: oklch(0.7 0.008 240);
+
+  --background: var(--paper-99);
+  --foreground: var(--ink-16);
+  --card: var(--paper-96);
+  --card-foreground: var(--ink-16);
+  --popover: var(--paper-96);
+  --popover-foreground: var(--ink-16);
+  --primary: var(--ink-16);
+  --primary-foreground: var(--paper-99);
+  --secondary: var(--paper-96);
+  --secondary-foreground: var(--ink-16);
+  --muted: var(--paper-96);
+  --muted-foreground: var(--ink-45);
+  --accent: var(--paper-91);
+  --accent-foreground: var(--ink-16);
+  --destructive: var(--alert-civic);
+  --border: var(--paper-91);
+  --input: var(--paper-91);
+  --ring: var(--azure-3);
+  --sidebar: var(--paper-96);
+  --sidebar-foreground: var(--ink-16);
+  --sidebar-primary: var(--ink-16);
+  --sidebar-primary-foreground: var(--paper-99);
+  --sidebar-accent: var(--paper-91);
+  --sidebar-accent-foreground: var(--ink-16);
+  --sidebar-border: var(--paper-91);
+  --sidebar-ring: var(--azure-3);
 }
 
 @layer base {
@@ -126,5 +160,31 @@
   }
   html {
     @apply font-sans;
+    font-feature-settings: "ss01", "cv01";
+  }
+  /* Editorial register: the human-facing surface speaks in Source Serif. */
+  .font-display,
+  .font-display * {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+  /* Document register: dates, IDs, table headers, in-record headings. */
+  .font-mono-meta {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  /* The signature dateline / section affordance: uppercase tracked mono. */
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  /* Numerals-Are-Mono Rule: every number-bearing column uses tabular nums. */
+  [data-tabular-nums] {
+    font-variant-numeric: tabular-nums;
   }
 }
