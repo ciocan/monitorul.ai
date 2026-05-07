@@ -340,7 +340,11 @@ function AgendaSection({
   const speechCount = entries.filter((e) => e.grain === "speeches").length;
   const anchorId = agenda ? `agenda-${agenda.ordinal}` : undefined;
   return (
-    <section id={anchorId} aria-labelledby={anchorId ? `${anchorId}-title` : undefined}>
+    <section
+      id={anchorId}
+      aria-labelledby={anchorId ? `${anchorId}-title` : undefined}
+      className="scroll-mt-20"
+    >
       {agenda ? (
         <header className="border-t-2 border-ink-16 pt-4">
           <p className="label-mono text-ink-45">
@@ -413,7 +417,10 @@ function SpeechBlock({ speech }: { speech: MoSpeech }) {
   const personSlug = speech.speaker.person_id;
   const speaker = speakerLine(speech);
   return (
-    <li id={anchorId} className="px-1 py-6 target:bg-paper-96 target:-mx-1 target:px-2">
+    <li
+      id={anchorId}
+      className="scroll-mt-20 px-1 py-6 target:bg-paper-96 target:-mx-1 target:px-2"
+    >
       <p className="font-mono text-base font-semibold leading-tight text-ink-16">
         {personSlug ? (
           <Link

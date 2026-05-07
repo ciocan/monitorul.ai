@@ -147,10 +147,13 @@ function SpeechHit({ hit, snippet }: { hit: MoSpeech; snippet?: string }) {
   const speaker = hit.speaker.name_search || hit.speaker.name_raw;
   const fallbackText = hit.text ? excerpt(hit.text, 220) : null;
   // Speech URL ships in a later phase; until then, link to the parent document
-  // page so the result is reachable. The canonical /discurs/<slug> route stays
-  // ready for when speech pages are wired up.
+  // page with a `#discurs-<position>` fragment that matches the inline anchor
+  // rendered by the document page (`target:` highlights it on landing).
   const parsed = parseDocumentId(hit.document_id);
-  const docHref = parsed ? `/mo/${parsed.year}/${parsed.part}/${parsed.issue}` : "/";
+  const speechPosition = hit.position_in_document ?? hit.position_in_agenda;
+  const docHref = parsed
+    ? `/mo/${parsed.year}/${parsed.part}/${parsed.issue}#discurs-${speechPosition}`
+    : "/";
   return (
     <li>
       <Link

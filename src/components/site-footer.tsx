@@ -19,6 +19,7 @@ export function SiteFooter() {
                 href="https://monitoruloficial.ro"
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
+                target="_blank"
               >
                 monitoruloficial.ro
               </a>
@@ -28,6 +29,7 @@ export function SiteFooter() {
                 href="https://www.cdep.ro"
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
+                target="_blank"
               >
                 Camera Deputaților
               </a>
@@ -37,6 +39,7 @@ export function SiteFooter() {
                 href="https://www.senat.ro"
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
+                target="_blank"
               >
                 Senatul României
               </a>
@@ -88,6 +91,7 @@ export function SiteFooter() {
               href="https://github.com/ciocan/monitorul-ii"
               className="underline underline-offset-4 hover:text-ink-30"
               rel="noreferrer"
+              target="_blank"
             >
               monitorul-ii
             </a>

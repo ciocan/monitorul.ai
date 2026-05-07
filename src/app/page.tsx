@@ -55,7 +55,7 @@ export default async function Home() {
         <h2 id="cauta" className="sr-only">
           Caută în arhivă
         </h2>
-        <SiteSearch size="lg" />
+        <SiteSearch size="lg" autoFocus />
         <p className="mt-3 text-sm text-ink-45">
           Numele unui politician, un articol de lege, un cuvânt-cheie. Răspunsul este o intrare în
           registru, nu un articol de presă.
