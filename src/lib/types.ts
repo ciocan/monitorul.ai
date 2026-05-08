@@ -317,6 +317,12 @@ export interface PersonPagePayload {
   // Total substantive-speech count matching the current filter (year/day).
   // Used to label the speeches section ("X discursuri") when filtered.
   filteredSpeechTotal: number;
+  // Pagination state for `recentSpeeches`. The day-filter view is exhaustive
+  // (single page, larger size cap) so `totalPages === 1` there even when the
+  // sitting has more speeches than fit; year / no-filter views paginate.
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface SessionYearCount {

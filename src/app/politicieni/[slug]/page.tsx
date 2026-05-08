@@ -4,9 +4,11 @@ import { notFound } from "next/navigation";
 
 import { ContributionsGraph } from "@/components/contributions-graph";
 import { Dateline } from "@/components/dateline";
+import { Pagination } from "@/components/pagination";
+import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { YearlyActivityChart } from "@/components/yearly-activity-chart";
 import { env } from "@/env";
-import { formatCount, formatDate, speechExcerpt, speechMeta } from "@/lib/format";
+import { formatCount, formatDate, speechExcerpt, speechMeta, speechWordCount } from "@/lib/format";
 import { personPage } from "@/lib/search";
 import type { Mandate, MoPerson, MoSpeech, PersonStats } from "@/lib/types";
 
@@ -21,7 +23,7 @@ interface RouteParams {
 
 interface PageProps {
   params: Promise<RouteParams>;
-  searchParams: Promise<{ year?: string; day?: string }>;
+  searchParams: Promise<{ year?: string; day?: string; page?: string }>;
 }
 
 // Accepts `2024`, `1995`, etc. Anything outside the parliamentary archive
@@ -44,6 +46,24 @@ function parseDayParam(raw: string | undefined): string | undefined {
   const d = new Date(`${raw}T00:00:00Z`);
   if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== raw) return undefined;
   return raw;
+}
+
+function parsePageParam(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return Math.min(n, 1000);
+}
+
+function speechesPageHref(slug: string, year: number | undefined, day: string | undefined) {
+  return (page: number) => {
+    const params = new URLSearchParams();
+    if (year) params.set("year", String(year));
+    if (day) params.set("day", day);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    return `/politicieni/${slug}${qs ? `?${qs}` : ""}#discursuri-recente`;
+  };
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -74,7 +94,8 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
   const sp = await searchParams;
   const year = parseYearParam(sp.year);
   const day = parseDayParam(sp.day);
-  const payload = await personPage(slug, { year, day });
+  const page = parsePageParam(sp.page);
+  const payload = await personPage(slug, { year, day, page });
   if (!payload) notFound();
   const {
     person,
@@ -86,10 +107,12 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
     selectedYear,
     selectedDate,
     filteredSpeechTotal,
+    page: currentPage,
+    totalPages,
   } = payload;
   const lifespan = activeLifespan(stats, person.mandates);
   const currentMandate = pickCurrentMandate(person.mandates);
-  const isFiltered = Boolean(year ?? day);
+  const safePage = Math.min(currentPage, totalPages);
   const speechesHeading = selectedDate
     ? `Discursuri din ${formatDate(selectedDate) ?? selectedDate}`
     : year
@@ -149,23 +172,27 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
 
       <section className="mt-12" aria-labelledby="discursuri-recente">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-          <h2 id="discursuri-recente" className="label-mono text-ink-30">
+          <h2 id="discursuri-recente" className="label-mono scroll-mt-20 text-ink-30">
             {speechesHeading}
           </h2>
-          {isFiltered && filteredSpeechTotal > recentSpeeches.length ? (
-            <span
-              className="font-mono-meta text-xs text-ink-45"
-              data-tabular-nums=""
-              aria-label={`${filteredSpeechTotal} în total, primele ${recentSpeeches.length} afișate`}
-            >
-              {recentSpeeches.length} din {formatCount(filteredSpeechTotal)}
+          {filteredSpeechTotal > 0 ? (
+            <span className="font-mono-meta text-xs text-ink-45" data-tabular-nums="">
+              {formatCount(filteredSpeechTotal)}{" "}
+              {filteredSpeechTotal === 1 ? "discurs" : "discursuri"}
             </span>
           ) : null}
         </div>
         {recentSpeeches.length === 0 ? (
           <EmptySpeeches selectedDate={selectedDate} selectedYear={year ?? null} />
         ) : (
-          <SpeechesList speeches={recentSpeeches} />
+          <>
+            <SpeechesList speeches={recentSpeeches} />
+            <Pagination
+              page={safePage}
+              totalPages={totalPages}
+              pageHref={speechesPageHref(person.slug, year, day)}
+            />
+          </>
         )}
       </section>
     </article>
@@ -288,15 +315,19 @@ function SpeechesList({ speeches }: { speeches: MoSpeech[] }) {
         const sessionDate = formatDate(speech.session_date);
         const excerpt = speechExcerpt(speech.text);
         const meta = speechMeta(speech);
+        const wordCount = speechWordCount(speech.text);
         return (
           <li key={speech.record_id}>
             <Link
               href={docHref}
               className="group/row block px-1 py-5 transition-colors hover:bg-paper-96"
             >
-              <p className="label-mono text-ink-45">
-                {[speech.chamber, sessionDate].filter(Boolean).join(" · ")}
-              </p>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+                <p className="label-mono text-ink-45">
+                  {[speech.chamber, sessionDate].filter(Boolean).join(" · ")}
+                </p>
+                <SpeechLengthMeter wordCount={wordCount} />
+              </div>
               {excerpt ? (
                 <p className="mt-2 text-base leading-relaxed text-ink-16">{excerpt}</p>
               ) : speech.agenda_title ? (

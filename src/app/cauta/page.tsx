@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { Pagination } from "@/components/pagination";
 import { SiteSearch } from "@/components/site-search";
-import { formatCount, formatDate } from "@/lib/format";
+import { SpeechLengthMeter } from "@/components/speech-length-meter";
+import { formatCount, formatDate, speechWordCount } from "@/lib/format";
 import { searchSpeeches } from "@/lib/search";
 import type { MoSpeech } from "@/lib/types";
 
@@ -135,7 +137,7 @@ async function SearchResults({ q, page }: { q: string; page: number }) {
               />
             ))}
           </ol>
-          <Pagination q={q} page={safePage} totalPages={totalPages} />
+          <Pagination page={safePage} totalPages={totalPages} pageHref={(p) => hrefFor(q, p)} />
         </>
       )}
     </section>
@@ -146,6 +148,7 @@ function SpeechHit({ hit, snippet }: { hit: MoSpeech; snippet?: string }) {
   const sessionDate = formatDate(hit.session_date);
   const speaker = hit.speaker.name_search || hit.speaker.name_raw;
   const fallbackText = hit.text ? excerpt(hit.text, 220) : null;
+  const wordCount = speechWordCount(hit.text);
   // Speech URL ships in a later phase; until then, link to the parent document
   // page with a `#discurs-<position>` fragment that matches the inline anchor
   // rendered by the document page (`target:` highlights it on landing).
@@ -154,38 +157,57 @@ function SpeechHit({ hit, snippet }: { hit: MoSpeech; snippet?: string }) {
   const docHref = parsed
     ? `/mo/${parsed.year}/${parsed.part}/${parsed.issue}#discurs-${speechPosition}`
     : "/";
+  // Speaker→person link gate, same shape as the document-page speech blocks:
+  // wrap in `<Link>` only when `speaker.person_id` is non-null. The id matches
+  // the person record's slug 1:1 (minted upstream from the canonical name).
+  const personSlug = hit.speaker.person_id;
   return (
-    <li>
-      <Link
-        href={docHref}
-        className="group/hit block px-1 py-5 transition-colors hover:bg-paper-96"
-      >
+    <li className="px-1 py-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <p className="label-mono text-ink-45">
           {[hit.chamber, sessionDate, hit.legislature ? `legislatura ${hit.legislature}` : null]
             .filter(Boolean)
             .join(" · ")}
         </p>
-        <p className="mt-2 text-base font-semibold leading-snug text-ink-16 group-hover/hit:underline underline-offset-4">
-          {speaker}
+        <SpeechLengthMeter wordCount={wordCount} />
+      </div>
+      <p className="mt-2 text-base font-semibold leading-snug text-ink-16">
+        {personSlug ? (
+          <Link
+            href={`/politicieni/${personSlug}`}
+            className="underline decoration-paper-91 underline-offset-4 transition-colors hover:decoration-ink-30 hover:text-ink-30"
+          >
+            {speaker}
+          </Link>
+        ) : (
+          speaker
+        )}
+      </p>
+      {hit.agenda_title ? (
+        <p className="mt-1 text-sm text-ink-30">
+          <span className="text-ink-45">Pe ordinea de zi: </span>
+          {hit.agenda_title}
         </p>
-        {hit.agenda_title ? (
-          <p className="mt-1 text-sm text-ink-30">
-            <span className="text-ink-45">Pe ordinea de zi: </span>
-            {hit.agenda_title}
-          </p>
-        ) : null}
-        {snippet ? (
-          <p
-            className="mt-3 max-w-prose text-sm leading-relaxed text-ink-30"
-            // eslint-disable-next-line react/no-danger -- ES `highlight` returns
-            // pre-sanitized text wrapped in our own `<mark>` tags. The query
-            // string is not echoed back; only the matched fragments are.
-            dangerouslySetInnerHTML={{ __html: snippet }}
-          />
-        ) : fallbackText ? (
-          <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-30">{fallbackText}</p>
-        ) : null}
-      </Link>
+      ) : null}
+      {snippet ? (
+        <p
+          className="mt-3 max-w-prose text-sm leading-relaxed text-ink-30"
+          // eslint-disable-next-line react/no-danger -- ES `highlight` returns
+          // pre-sanitized text wrapped in our own `<mark>` tags. The query
+          // string is not echoed back; only the matched fragments are.
+          dangerouslySetInnerHTML={{ __html: snippet }}
+        />
+      ) : fallbackText ? (
+        <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-30">{fallbackText}</p>
+      ) : null}
+      <p className="mt-3">
+        <Link
+          href={docHref}
+          className="label-mono text-ink-45 underline decoration-paper-91 underline-offset-4 transition-colors hover:decoration-ink-30 hover:text-ink-30"
+        >
+          Vezi în context →
+        </Link>
+      </p>
     </li>
   );
 }
@@ -201,50 +223,6 @@ function excerpt(text: string, max: number): string {
   const cut = text.slice(0, max);
   const lastSpace = cut.lastIndexOf(" ");
   return `${lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut}…`;
-}
-
-function Pagination({ q, page, totalPages }: { q: string; page: number; totalPages: number }) {
-  if (totalPages <= 1) return null;
-  const prevHref = page > 1 ? hrefFor(q, page - 1) : null;
-  const nextHref = page < totalPages ? hrefFor(q, page + 1) : null;
-  return (
-    <nav
-      aria-label="Paginare"
-      className="mt-8 flex items-center justify-between gap-4 border-t border-border pt-6"
-    >
-      <PaginationLink href={prevHref}>← Pagina anterioară</PaginationLink>
-      <p className="label-mono text-ink-45" data-tabular-nums="">
-        Pagina {page} din {totalPages}
-      </p>
-      <PaginationLink href={nextHref} alignEnd>
-        Pagina următoare →
-      </PaginationLink>
-    </nav>
-  );
-}
-
-function PaginationLink({
-  href,
-  alignEnd,
-  children,
-}: {
-  href: string | null;
-  alignEnd?: boolean;
-  children: React.ReactNode;
-}) {
-  const className = `label-mono ${alignEnd ? "ml-auto" : ""} text-ink-30 transition-colors hover:text-ink-16`;
-  if (!href) {
-    return (
-      <span className={`${className} cursor-not-allowed text-ink-45`} aria-disabled="true">
-        {children}
-      </span>
-    );
-  }
-  return (
-    <Link href={href} className={className}>
-      {children}
-    </Link>
-  );
 }
 
 function hrefFor(q: string, page: number): string {

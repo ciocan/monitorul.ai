@@ -1208,138 +1208,159 @@ async function fetchPersonActivity(
 // A single sitting rarely produces more than ~30 substantive speeches by one
 // speaker, so 50 covers the long tail of a day filter without paginating.
 const PERSON_DAY_SPEECH_LIMIT = 50;
-const PERSON_RECENT_SPEECH_LIMIT = 10;
+// Page size for the year / no-filter views. Year scopes can run into hundreds
+// of speeches for prolific speakers; `?page=N` paginates from there.
+const PERSON_RECENT_PAGE_SIZE = 20;
 
 export interface PersonPageOptions {
   year?: number;
   // `YYYY-MM-DD`. When set, the speeches list narrows to that single day and
   // the heatmap marks that cell. Year is derived from the day string.
   day?: string;
+  // 1-indexed. Ignored on day-filtered views (those are exhaustive in one
+  // shot, capped at `PERSON_DAY_SPEECH_LIMIT`).
+  page?: number;
 }
 
 export async function personPage(
   slug: string,
   opts: PersonPageOptions = {},
 ): Promise<PersonPagePayload | null> {
-  return timed("personPage", { slug, year: opts.year, day: opts.day }, async () => {
-    const personRes = await esClient()
-      .get<MoPerson>({ index: ES_INDEX.persons, id: slug })
-      .catch((e) => {
-        if ((e as { meta?: { statusCode?: number } })?.meta?.statusCode === 404) return null;
-        throw e;
-      });
-    if (!personRes || !personRes._source) {
-      return { result: null, esTookMs: null, hitsTotal: 0 };
-    }
-    const person = personRes._source;
-    const day = opts.day ?? null;
-    // Day implies year — the heatmap and sparkbar should track the day's
-    // calendar year regardless of any explicit `?year=` (which is redundant
-    // but tolerated for share-link robustness).
-    const yearFromDay = day ? Number.parseInt(day.slice(0, 4), 10) : null;
-    const requestedYear = yearFromDay ?? opts.year ?? null;
-    const personSpeechFilters: QueryDslQueryContainer[] = [
-      { term: { "speaker.person_id": person.id } },
-      { term: { is_substantive: true } },
-    ];
-    if (day) {
-      personSpeechFilters.push({ term: { session_date: day } });
-    } else if (requestedYear) {
-      personSpeechFilters.push({
-        range: {
-          session_date: { gte: `${requestedYear}-01-01`, lte: `${requestedYear}-12-31` },
-        },
-      });
-    }
-    // Two queries in parallel:
-    // 1. Filtered speech search — drives the speeches list, narrowed to the
-    //    selected year/day.
-    // 2. Unfiltered career-long aggregations — drives the sparkbar and the
-    //    stats fallback. These need every year, not just the filtered scope,
-    //    so they live in their own request rather than a `global` agg (which
-    //    we tried first; the sub-`filter` re-applies the parent year filter
-    //    despite the spec, so the per-year buckets came back filtered).
-    const [speechRes, careerRes] = await Promise.all([
-      esClient().search<MoSpeech>({
-        index: ES_INDEX.speeches,
-        size: day ? PERSON_DAY_SPEECH_LIMIT : PERSON_RECENT_SPEECH_LIMIT,
-        track_total_hits: true,
-        query: { bool: { filter: personSpeechFilters } },
-        sort: [{ session_date: { order: "desc" } }, { position_in_document: { order: "asc" } }],
-        // `text` is intentionally retained — the speeches list shows an
-        // excerpt (truncated client-side to ~240 chars). Embedding vectors
-        // stay out (1024 floats × 50 hits would be ~200 KB of ballast).
-        _source: { excludes: ["enrichments.embedding"] },
-      }),
-      esClient().search({
-        index: ES_INDEX.speeches,
-        size: 0,
-        query: {
-          bool: {
-            filter: [
-              { term: { "speaker.person_id": person.id } },
-              { term: { is_substantive: true } },
-            ],
+  return timed(
+    "personPage",
+    { slug, year: opts.year, day: opts.day, page: opts.page },
+    async () => {
+      const personRes = await esClient()
+        .get<MoPerson>({ index: ES_INDEX.persons, id: slug })
+        .catch((e) => {
+          if ((e as { meta?: { statusCode?: number } })?.meta?.statusCode === 404) return null;
+          throw e;
+        });
+      if (!personRes || !personRes._source) {
+        return { result: null, esTookMs: null, hitsTotal: 0 };
+      }
+      const person = personRes._source;
+      const day = opts.day ?? null;
+      // Day implies year — the heatmap and sparkbar should track the day's
+      // calendar year regardless of any explicit `?year=` (which is redundant
+      // but tolerated for share-link robustness).
+      const yearFromDay = day ? Number.parseInt(day.slice(0, 4), 10) : null;
+      const requestedYear = yearFromDay ?? opts.year ?? null;
+      const personSpeechFilters: QueryDslQueryContainer[] = [
+        { term: { "speaker.person_id": person.id } },
+        { term: { is_substantive: true } },
+      ];
+      if (day) {
+        personSpeechFilters.push({ term: { session_date: day } });
+      } else if (requestedYear) {
+        personSpeechFilters.push({
+          range: {
+            session_date: { gte: `${requestedYear}-01-01`, lte: `${requestedYear}-12-31` },
           },
-        },
-        aggs: {
-          speech_count: { value_count: { field: "record_id" } },
-          first_speech_date: { min: { field: "session_date" } },
-          last_speech_date: { max: { field: "session_date" } },
-          by_year: {
-            date_histogram: {
-              field: "session_date",
-              calendar_interval: "year",
-              format: "yyyy",
-              min_doc_count: 1,
+        });
+      }
+      // Pagination only applies to year / no-filter views. Day filter is
+      // exhaustive (single page, size = PERSON_DAY_SPEECH_LIMIT) per the
+      // comment on that constant.
+      const requestedPage = opts.page && opts.page > 0 ? Math.floor(opts.page) : 1;
+      const pageSize = day ? PERSON_DAY_SPEECH_LIMIT : PERSON_RECENT_PAGE_SIZE;
+      const fromOffset = day ? 0 : (requestedPage - 1) * pageSize;
+      // Two queries in parallel:
+      // 1. Filtered speech search — drives the speeches list, narrowed to the
+      //    selected year/day.
+      // 2. Unfiltered career-long aggregations — drives the sparkbar and the
+      //    stats fallback. These need every year, not just the filtered scope,
+      //    so they live in their own request rather than a `global` agg (which
+      //    we tried first; the sub-`filter` re-applies the parent year filter
+      //    despite the spec, so the per-year buckets came back filtered).
+      const [speechRes, careerRes] = await Promise.all([
+        esClient().search<MoSpeech>({
+          index: ES_INDEX.speeches,
+          from: fromOffset,
+          size: pageSize,
+          track_total_hits: true,
+          query: { bool: { filter: personSpeechFilters } },
+          sort: [{ session_date: { order: "desc" } }, { position_in_document: { order: "asc" } }],
+          // `text` is intentionally retained — the speeches list shows an
+          // excerpt (truncated client-side to ~240 chars). Embedding vectors
+          // stay out (1024 floats × 50 hits would be ~200 KB of ballast).
+          _source: { excludes: ["enrichments.embedding"] },
+        }),
+        esClient().search({
+          index: ES_INDEX.speeches,
+          size: 0,
+          query: {
+            bool: {
+              filter: [
+                { term: { "speaker.person_id": person.id } },
+                { term: { is_substantive: true } },
+              ],
             },
           },
+          aggs: {
+            speech_count: { value_count: { field: "record_id" } },
+            first_speech_date: { min: { field: "session_date" } },
+            last_speech_date: { max: { field: "session_date" } },
+            by_year: {
+              date_histogram: {
+                field: "session_date",
+                calendar_interval: "year",
+                format: "yyyy",
+                min_doc_count: 1,
+              },
+            },
+          },
+        }),
+      ]);
+      const careerAggs = careerRes.aggregations as
+        | {
+            speech_count: { value: number };
+            first_speech_date: { value_as_string?: string; value: number | null };
+            last_speech_date: { value_as_string?: string; value: number | null };
+            by_year: { buckets: Array<{ key_as_string: string; doc_count: number }> };
+          }
+        | undefined;
+      const stats: PersonStats = person.stats ?? {
+        speech_count: careerAggs?.speech_count.value ?? 0,
+        first_speech_date: careerAggs?.first_speech_date.value_as_string ?? null,
+        last_speech_date: careerAggs?.last_speech_date.value_as_string ?? null,
+        interpellation_count: 0,
+        question_count: 0,
+      };
+      const yearlyCounts: PersonYearCount[] = (careerAggs?.by_year.buckets ?? [])
+        .map((b) => ({ year: Number.parseInt(b.key_as_string, 10), count: b.doc_count }))
+        .filter((b) => Number.isInteger(b.year))
+        .sort((a, b) => a.year - b.year);
+      // Default selection: most recent active year. An out-of-range explicit
+      // `?year=` (e.g. before the politician's first session) still renders —
+      // the heatmap shows an empty grid so the user understands their selection
+      // landed somewhere with no activity.
+      const fallbackYear = yearlyCounts.at(-1)?.year ?? yearOf(stats.last_speech_date);
+      const selectedYear = requestedYear ?? fallbackYear ?? null;
+      const window = computeActivityWindow(selectedYear);
+      const activity = window ? await fetchPersonActivity(person.id, window) : [];
+      const filteredSpeechTotal = totalOf(speechRes.hits.total);
+      const totalPages = day ? 1 : Math.max(1, Math.ceil(filteredSpeechTotal / pageSize));
+      return {
+        result: {
+          person,
+          recentSpeeches: speechRes.hits.hits.flatMap((h) => (h._source ? [h._source] : [])),
+          stats,
+          activity,
+          activityWindow: window,
+          yearlyCounts,
+          selectedYear,
+          selectedDate: day,
+          filteredSpeechTotal,
+          page: day ? 1 : requestedPage,
+          pageSize,
+          totalPages,
         },
-      }),
-    ]);
-    const careerAggs = careerRes.aggregations as
-      | {
-          speech_count: { value: number };
-          first_speech_date: { value_as_string?: string; value: number | null };
-          last_speech_date: { value_as_string?: string; value: number | null };
-          by_year: { buckets: Array<{ key_as_string: string; doc_count: number }> };
-        }
-      | undefined;
-    const stats: PersonStats = person.stats ?? {
-      speech_count: careerAggs?.speech_count.value ?? 0,
-      first_speech_date: careerAggs?.first_speech_date.value_as_string ?? null,
-      last_speech_date: careerAggs?.last_speech_date.value_as_string ?? null,
-      interpellation_count: 0,
-      question_count: 0,
-    };
-    const yearlyCounts: PersonYearCount[] = (careerAggs?.by_year.buckets ?? [])
-      .map((b) => ({ year: Number.parseInt(b.key_as_string, 10), count: b.doc_count }))
-      .filter((b) => Number.isInteger(b.year))
-      .sort((a, b) => a.year - b.year);
-    // Default selection: most recent active year. An out-of-range explicit
-    // `?year=` (e.g. before the politician's first session) still renders —
-    // the heatmap shows an empty grid so the user understands their selection
-    // landed somewhere with no activity.
-    const fallbackYear = yearlyCounts.at(-1)?.year ?? yearOf(stats.last_speech_date);
-    const selectedYear = requestedYear ?? fallbackYear ?? null;
-    const window = computeActivityWindow(selectedYear);
-    const activity = window ? await fetchPersonActivity(person.id, window) : [];
-    return {
-      result: {
-        person,
-        recentSpeeches: speechRes.hits.hits.flatMap((h) => (h._source ? [h._source] : [])),
-        stats,
-        activity,
-        activityWindow: window,
-        yearlyCounts,
-        selectedYear,
-        selectedDate: day,
-        filteredSpeechTotal: totalOf(speechRes.hits.total),
-      },
-      esTookMs: speechRes.took ?? null,
-      hitsTotal: totalOf(speechRes.hits.total),
-    };
-  });
+        esTookMs: speechRes.took ?? null,
+        hitsTotal: filteredSpeechTotal,
+      };
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

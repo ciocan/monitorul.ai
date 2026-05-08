@@ -133,6 +133,37 @@ const MD_ITALIC_UND_RE = /(^|[^_\w])_([^_\n]+?)_(?![_\w])/g;
 const SPEAKER_PREFIX_RE = /^(?:Domnul|Doamna|Domnișoara)\s+\p{Lu}[\p{L}\s\-.]+?:\s*/u;
 const LEADING_PUNCT_RE = /^[,;.:]+\s*/;
 
+// Word count for a speech body. Strips the same Markdown markers as
+// `speechExcerpt` so the count tracks the rendered text rather than the raw
+// source (`**Domnul X:**` / `## section` would otherwise inflate the count).
+export function speechWordCount(text: string | null | undefined): number {
+  if (!text) return 0;
+  const cleaned = text
+    .replace(MD_HEADING_RE, "$1")
+    .replace(MD_BOLD_AST_RE, "$1")
+    .replace(MD_BOLD_UND_RE, "$1")
+    .replace(MD_ITALIC_AST_RE, "$1")
+    .replace(MD_ITALIC_UND_RE, "$1$2")
+    .replace(SPEAKER_PREFIX_RE, "")
+    .trim();
+  if (cleaned.length === 0) return 0;
+  return cleaned.split(/\s+/).filter(Boolean).length;
+}
+
+export type SpeechSize = "xs" | "s" | "m" | "l" | "xl";
+
+// Length buckets for the at-a-glance meter on speech rows. Calibrated against
+// the substantive corpus (text_length ≥ 100 chars ≈ 15+ words): xs is a brief
+// procedural turn, s a short intervention, m a typical declaration, l a full
+// speech, xl an extended address.
+export function speechSize(wordCount: number): SpeechSize {
+  if (wordCount < 30) return "xs";
+  if (wordCount < 100) return "s";
+  if (wordCount < 300) return "m";
+  if (wordCount < 800) return "l";
+  return "xl";
+}
+
 // Trim a speech body down to a list-friendly preview. Strips Markdown
 // emphasis, collapses whitespace (the extractor preserves stenogram line
 // breaks), removes any leading "Domnul X:" speaker self-prefix, then cuts at
