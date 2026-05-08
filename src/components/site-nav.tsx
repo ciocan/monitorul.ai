@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { NavStatusDot } from "@/components/nav-status-dot";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -41,14 +42,16 @@ function NavLink({
       href={item.href}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
-      style={active ? ACTIVE_UNDERLINE : undefined}
       className={cn(
-        "label-mono inline-flex items-center whitespace-nowrap pb-1 transition-colors",
+        "label-mono inline-flex items-baseline whitespace-nowrap transition-colors",
         size === "lg" && "text-[1.125rem]",
         active ? "text-ink-16" : "text-ink-30 hover:text-ink-16",
       )}
     >
-      {item.label}
+      <span className="pb-1" style={active ? ACTIVE_UNDERLINE : undefined}>
+        {item.label}
+      </span>
+      <NavStatusDot />
     </Link>
   );
 }

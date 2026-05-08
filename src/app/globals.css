@@ -187,4 +187,56 @@
   [data-tabular-nums] {
     font-variant-numeric: tabular-nums;
   }
+  /* Search-result highlight. Browser default <mark> is a saturated yellow
+	   that screams on the dark canvas; we tone both themes onto a soft warm
+	   ochre with the foreground ink token so contrast inverts cleanly. */
+  mark {
+    background-color: oklch(0.92 0.11 92);
+    color: var(--ink-16);
+    padding-inline: 0.1em;
+  }
+  .dark mark {
+    background-color: oklch(0.42 0.07 88);
+  }
+  /* Inline pending hint for nav <Link>s that wrap a <NavStatusDot />.
+     Reserves a 6px slot at all times so toggling visibility never causes
+     layout shift. The 100ms animation-delay means fast prefetched
+     navigations never trigger the hint — it appears only when the
+     destination is actually doing server work. Pattern from the Next.js
+     useLinkStatus docs (api-reference/functions/use-link-status). */
+  .nav-status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 6px;
+    border-radius: 9999px;
+    background-color: var(--azure-3);
+    opacity: 0;
+    visibility: hidden;
+  }
+  .nav-status-dot.is-pending {
+    visibility: visible;
+    animation-name: nav-status-fade-in, nav-status-pulse;
+    animation-duration: 200ms, 1s;
+    animation-delay: 100ms, 100ms;
+    animation-timing-function: ease, ease-in-out;
+    animation-iteration-count: 1, infinite;
+    animation-fill-mode: forwards, none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nav-status-dot.is-pending {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+  @keyframes nav-status-fade-in {
+    to {
+      opacity: 0.7;
+    }
+  }
+  @keyframes nav-status-pulse {
+    50% {
+      opacity: 0.25;
+    }
+  }
 }
