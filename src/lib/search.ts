@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { QueryDslQueryContainer, SearchRequest } from "@elastic/elasticsearch/lib/api/types";
+import { after } from "next/server";
 
 import { env } from "@/env";
 
@@ -108,9 +109,13 @@ function totalOf(hitsTotal: unknown): number {
   return 0;
 }
 
-// Fire-and-forget query log. The reader API key won't have write permission on
-// monitorul_query_log; failures are swallowed by design (the indexer pipeline
-// runs the actual logger). In dev, we still emit to stderr for visibility.
+// Best-effort query log. Scheduled via Next's `after()` so the index POST
+// runs after the response has been sent — without it, fire-and-forget on
+// Fluid Compute / serverless gets dropped when the function suspends, which
+// is why short-lived MCP tool calls were silently losing rows while RSC pages
+// (which keep the function busy long enough for `void` to flush) showed up.
+// `after()` is tracked by the platform's `waitUntil`, so the runtime keeps
+// the invocation alive until the write settles. Failures are still swallowed.
 function logQuery(entry: QueryLogEntry): void {
   if (env.NODE_ENV !== "production") {
     const tag = entry.error ? "ERR" : "OK";
@@ -121,11 +126,14 @@ function logQuery(entry: QueryLogEntry): void {
     );
   }
   if (!env.QUERY_LOG_WRITE) return;
-  void esClient()
-    .index({ index: QUERY_LOG_INDEX, document: entry })
-    .catch(() => {
-      // silently swallow; logging is best-effort
-    });
+  after(async () => {
+    try {
+      console.log("----- after -----", { entry });
+      await esClient().index({ index: QUERY_LOG_INDEX, document: entry });
+    } catch {
+      // best-effort
+    }
+  });
 }
 
 async function timed<T>(
