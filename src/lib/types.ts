@@ -324,6 +324,55 @@ export interface SessionYearCount {
   count: number;
 }
 
+// Same shape as SessionYearCount; aliased here so call sites read clearly.
+// Counts the number of substantive speeches with a populated `speaker.person_id`
+// for that calendar year — i.e. the universe being ranked on `/politicieni`.
+export interface PoliticianYearCount {
+  year: number;
+  count: number;
+}
+
+export interface PoliticianRankRow {
+  // The full person record from `mo-persons`. `null` when the speeches index
+  // references a person_id that hasn't (yet) been registered — rare in normal
+  // operation, surfaces during transitional reindex windows.
+  person: MoPerson | null;
+  personId: string;
+  // Speech bucket's `top_hits` sample — the most recent name spelling used in
+  // a speech for this person_id. Used as the row label when `person` is null.
+  fallbackName: string;
+  speechCount: number;
+  firstSpeechDate: string | null;
+  lastSpeechDate: string | null;
+}
+
+export interface PoliticiansIndexPayload {
+  // Per-year totals of speeches with a populated `speaker.person_id` (filtered
+  // to substantive when `substantiveOnly` is true). Drives the year sparkbar;
+  // reflects the universe being ranked.
+  yearlyCounts: PoliticianYearCount[];
+  // Top politicians by speech count, descending. Capped at 100 — the long tail
+  // is reachable via search.
+  topPersons: PoliticianRankRow[];
+  // Calendar year currently filtered. Defaults to the most recent active year
+  // when the page is hit without `?year=`.
+  selectedYear: number | null;
+  // Whether the rank/agg pipeline filtered to `is_substantive: true`. Default
+  // is true (matches the layer-wide public default); set to false via the
+  // `?mode=all` query param on /politicieni to widen the universe.
+  substantiveOnly: boolean;
+  // Every record in `mo-persons` regardless of speech linkage. Surfaces in the
+  // footer note ("X persoane indexate") so users know the registry is bigger
+  // than the rank list.
+  totalRegistryPersons: number;
+  // Distinct persons with ≥1 speech in the selected scope (filtered to
+  // substantive when `substantiveOnly` is true).
+  linkedPersonsInScope: number;
+  // Total speeches in the selected scope. Surfaces in the footer note alongside
+  // `linkedPersonsInScope`.
+  speechesInScope: number;
+}
+
 export interface SessionsIndexPayload {
   // Per-year session totals across the entire archive. Sparse (skips year=0
   // legacy parse failures) and sorted ascending. Drives the year sparkbar.

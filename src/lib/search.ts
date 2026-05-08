@@ -23,6 +23,9 @@ import type {
   PersonPagePayload,
   PersonStats,
   PersonYearCount,
+  PoliticianRankRow,
+  PoliticianYearCount,
+  PoliticiansIndexPayload,
   SearchResult,
   SessionYearCount,
   SessionsIndexPayload,
@@ -413,6 +416,201 @@ export async function sessionsIndex(opts: { year?: number } = {}): Promise<Sessi
 }
 
 // ---------------------------------------------------------------------------
+// Politicians index (`/politicieni`): top-N by substantive-speech count for
+// the selected year, alongside per-year totals for the sparkbar. Stats live
+// outside `mo-persons` (the persons index has an empty `stats` field today;
+// rankings are derived live from `mo-speeches` aggregations) so this layer
+// owns the cross-index join.
+
+const POLITICIAN_RANK_LIMIT = 100;
+
+function politicianRankFilters(opts: {
+  year: number | null;
+  substantiveOnly: boolean;
+}): QueryDslQueryContainer[] {
+  const filters: QueryDslQueryContainer[] = [{ exists: { field: "speaker.person_id" } }];
+  if (opts.substantiveOnly) filters.push({ term: { is_substantive: true } });
+  if (opts.year !== null) filters.push({ term: { year: opts.year } });
+  return filters;
+}
+
+async function fetchPoliticianYearCounts(substantiveOnly: boolean): Promise<PoliticianYearCount[]> {
+  const filters = politicianRankFilters({ year: null, substantiveOnly });
+  const res = await esClient().search({
+    index: ES_INDEX.speeches,
+    size: 0,
+    query: { bool: { filter: filters } },
+    aggs: {
+      by_year: {
+        terms: {
+          field: "year",
+          size: 100,
+          order: { _key: "asc" },
+          min_doc_count: 1,
+        },
+      },
+    },
+  });
+  const buckets =
+    (
+      res.aggregations as
+        | { by_year: { buckets: Array<{ key: number; doc_count: number }> } }
+        | undefined
+    )?.by_year.buckets ?? [];
+  return buckets
+    .map((b) => ({ year: b.key, count: b.doc_count }))
+    .filter((b) => b.year >= SESSION_YEAR_MIN && b.year <= SESSION_YEAR_MAX);
+}
+
+interface RankBucketRaw {
+  personId: string;
+  speechCount: number;
+  firstSpeechDate: string | null;
+  lastSpeechDate: string | null;
+  fallbackName: string;
+}
+
+interface RankAggResult {
+  buckets: RankBucketRaw[];
+  distinctPersons: number;
+  totalSpeeches: number;
+}
+
+async function fetchTopPoliticianBuckets(opts: {
+  year: number | null;
+  substantiveOnly: boolean;
+}): Promise<RankAggResult> {
+  const filters = politicianRankFilters(opts);
+  const res = await esClient().search({
+    index: ES_INDEX.speeches,
+    size: 0,
+    track_total_hits: true,
+    query: { bool: { filter: filters } },
+    aggs: {
+      by_person: {
+        terms: {
+          field: "speaker.person_id",
+          size: POLITICIAN_RANK_LIMIT,
+          order: { _count: "desc" },
+        },
+        aggs: {
+          first_date: { min: { field: "session_date" } },
+          last_date: { max: { field: "session_date" } },
+          // Most-recent speech for each speaker carries the freshest spelling
+          // of their name. Used as the row label when the persons-index lookup
+          // misses (transitional indexing window).
+          name_sample: {
+            top_hits: {
+              size: 1,
+              sort: [{ session_date: { order: "desc" } }],
+              _source: ["speaker.name_raw"],
+            },
+          },
+        },
+      },
+      distinct_persons: { cardinality: { field: "speaker.person_id" } },
+    },
+  });
+  const aggs = res.aggregations as
+    | {
+        by_person: {
+          buckets: Array<{
+            key: string;
+            doc_count: number;
+            first_date: { value_as_string?: string };
+            last_date: { value_as_string?: string };
+            name_sample: {
+              hits: {
+                hits: Array<{ _source?: { speaker?: { name_raw?: string } } }>;
+              };
+            };
+          }>;
+        };
+        distinct_persons: { value: number };
+      }
+    | undefined;
+  const buckets = (aggs?.by_person.buckets ?? []).map((b) => {
+    const sampleName = b.name_sample.hits.hits[0]?._source?.speaker?.name_raw ?? b.key;
+    return {
+      personId: b.key,
+      speechCount: b.doc_count,
+      firstSpeechDate: b.first_date.value_as_string ?? null,
+      lastSpeechDate: b.last_date.value_as_string ?? null,
+      fallbackName: sampleName,
+    };
+  });
+  return {
+    buckets,
+    distinctPersons: aggs?.distinct_persons.value ?? 0,
+    totalSpeeches: totalOf(res.hits.total),
+  };
+}
+
+async function fetchPersonsByIds(ids: string[]): Promise<Map<string, MoPerson>> {
+  if (ids.length === 0) return new Map();
+  const res = await esClient().mget<MoPerson>({ index: ES_INDEX.persons, ids });
+  const map = new Map<string, MoPerson>();
+  for (const doc of res.docs ?? []) {
+    if ("found" in doc && doc.found && doc._source) {
+      // mget returns _id as `string | number` in the type but it's always a
+      // string for our keyword-id index — coerce to satisfy strict mode.
+      map.set(String(doc._id), doc._source);
+    }
+  }
+  return map;
+}
+
+export async function politiciansIndex(
+  opts: { year?: number; substantiveOnly?: boolean } = {},
+): Promise<PoliticiansIndexPayload> {
+  return timed("politiciansIndex", opts, async () => {
+    const requestedYear =
+      opts.year && opts.year >= SESSION_YEAR_MIN && opts.year <= SESSION_YEAR_MAX
+        ? opts.year
+        : null;
+    // `substantiveOnly` defaults true to match the public default applied
+    // everywhere else in this layer (see the `is_substantive` filter on
+    // searchSpeeches). Setting it false widens the universe to include
+    // procedural turn-taking — useful for surfacing session presidents who
+    // accumulate huge raw counts but rarely deliver substantive speeches.
+    const substantiveOnly = opts.substantiveOnly ?? true;
+    // Year counts come first (the unfiltered axis); then we know the fallback
+    // year to query for the ranking when none was supplied.
+    const yearlyCounts = await fetchPoliticianYearCounts(substantiveOnly);
+    const fallbackYear = yearlyCounts.at(-1)?.year ?? null;
+    const selectedYear = requestedYear ?? fallbackYear;
+    const [rank, totalRegistryPersons] = await Promise.all([
+      fetchTopPoliticianBuckets({ year: selectedYear, substantiveOnly }),
+      esClient()
+        .count({ index: ES_INDEX.persons })
+        .then((r) => r.count),
+    ]);
+    const personMap = await fetchPersonsByIds(rank.buckets.map((b) => b.personId));
+    const topPersons: PoliticianRankRow[] = rank.buckets.map((b) => ({
+      person: personMap.get(b.personId) ?? null,
+      personId: b.personId,
+      fallbackName: b.fallbackName,
+      speechCount: b.speechCount,
+      firstSpeechDate: b.firstSpeechDate,
+      lastSpeechDate: b.lastSpeechDate,
+    }));
+    return {
+      result: {
+        yearlyCounts,
+        topPersons,
+        selectedYear,
+        substantiveOnly,
+        totalRegistryPersons,
+        linkedPersonsInScope: rank.distinctPersons,
+        speechesInScope: rank.totalSpeeches,
+      },
+      esTookMs: null,
+      hitsTotal: topPersons.length,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Speeches search: BM25 default, optional client-side RRF fusion with kNN.
 
 export interface SearchSpeechesParams {
@@ -595,35 +793,179 @@ async function knnLeg(
   };
 }
 
-// Reciprocal Rank Fusion. score(d) = Σ over legs of 1 / (rank_constant + rank_in_leg).
-// Docs that appear in both legs accumulate higher than those that appear in one.
+// ---------------------------------------------------------------------------
+// Ids-only legs for RRF.
+//
+// The fusion math (`fuseRrfIds`) only needs each leg's ranked id list, so the
+// pool fetches return `_source: false` and no highlights. The 20-doc page
+// slice is materialised in one shot via `fetchSpeechesByIds` after fusion.
+//
+// Cold-cache impact measured against `mo-speeches-20260506-v1` (817K docs,
+// 24 segments/shard, BBQ-HNSW): kNN k=100/nc=1000 dropped from ~1.5 s with
+// `_source` to ~100 ms ids-only; BM25 size=100 with highlights+source dropped
+// from ~900 ms to ~120 ms ids-only. Highlights move to the page-slice fetch
+// where they only run on the 20 hits actually rendered.
+
+interface BmIdsLegResult {
+  ids: string[];
+  total: number;
+  tookMs: number;
+}
+
+interface KnnIdsLegResult {
+  ids: string[];
+  tookMs: number;
+}
+
+async function bm25LegIds(
+  p: SearchSpeechesParams,
+  filters: QueryDslQueryContainer[],
+  size: number,
+): Promise<BmIdsLegResult> {
+  const must: QueryDslQueryContainer[] = [];
+  if (p.q && p.q.trim()) {
+    must.push({
+      multi_match: {
+        query: p.q,
+        fields: SPEECH_SEARCH_FIELDS,
+        type: "best_fields",
+        operator: "or",
+      },
+    });
+  } else {
+    must.push({ match_all: {} });
+  }
+  const res = await esClient().search<MoSpeech>({
+    index: ES_INDEX.speeches,
+    from: 0,
+    size,
+    track_total_hits: true,
+    query: { bool: { must, filter: filters } },
+    _source: false,
+    sort: p.q ? undefined : [{ session_date: { order: "desc" } }],
+  });
+  return {
+    ids: res.hits.hits.flatMap((h) => (h._id ? [h._id] : [])),
+    total: totalOf(res.hits.total),
+    tookMs: res.took ?? 0,
+  };
+}
+
+async function knnLegIds(
+  vector: number[],
+  filters: QueryDslQueryContainer[],
+  k: number,
+): Promise<KnnIdsLegResult> {
+  const res = await esClient().search<MoSpeech>({
+    index: ES_INDEX.speeches,
+    size: k,
+    knn: {
+      field: "enrichments.embedding",
+      query_vector: vector,
+      k,
+      num_candidates: Math.max(RRF_NUM_CANDIDATES_FLOOR, k * RRF_NUM_CANDIDATES_MULT),
+      filter: filters,
+    },
+    _source: false,
+  });
+  return {
+    ids: res.hits.hits.flatMap((h) => (h._id ? [h._id] : [])),
+    tookMs: res.took ?? 0,
+  };
+}
+
+// Materialise the page slice after fusion. One ES call: `ids` query for the
+// page-sized list, with optional highlight via `highlight_query` so the
+// snippet logic still runs against the user's text query (separate from the
+// id-lookup query). Result is reordered to match the input id list (ES
+// doesn't guarantee response order matches the `ids.values` order, and the
+// fusion ordering is what the UI must render).
+async function fetchSpeechesByIds(
+  ids: string[],
+  q: string | undefined,
+): Promise<{ hits: MoSpeech[]; highlights: Record<string, string> }> {
+  if (ids.length === 0) return { hits: [], highlights: {} };
+  const trimmed = q?.trim();
+  const highlightBlock = trimmed
+    ? {
+        highlight_query: {
+          multi_match: {
+            query: trimmed,
+            fields: SPEECH_SEARCH_FIELDS,
+            type: "best_fields" as const,
+            operator: "or" as const,
+          },
+        },
+        fields: {
+          text: {
+            number_of_fragments: 1,
+            fragment_size: 220,
+            matched_fields: ["text", "text.folded"],
+            type: "unified" as const,
+          },
+          agenda_title: {
+            number_of_fragments: 0,
+            matched_fields: ["agenda_title", "agenda_title.folded"],
+            type: "unified" as const,
+          },
+        },
+        pre_tags: ["<mark>"],
+        post_tags: ["</mark>"],
+      }
+    : undefined;
+  const res = await esClient().search<MoSpeech>({
+    index: ES_INDEX.speeches,
+    size: ids.length,
+    query: { ids: { values: ids } },
+    _source: { excludes: ["enrichments.embedding"] },
+    highlight: highlightBlock,
+  });
+  const byId = new Map<string, { doc: MoSpeech; snippet?: string }>();
+  for (const h of res.hits.hits) {
+    if (!h._source) continue;
+    const snippet = h.highlight?.text?.[0] ?? h.highlight?.agenda_title?.[0];
+    byId.set(h._source.record_id, { doc: h._source, snippet });
+  }
+  const hits: MoSpeech[] = [];
+  const highlights: Record<string, string> = {};
+  for (const id of ids) {
+    const entry = byId.get(id);
+    if (!entry) continue;
+    hits.push(entry.doc);
+    if (entry.snippet) highlights[id] = entry.snippet;
+  }
+  return { hits, highlights };
+}
+
+// Reciprocal Rank Fusion. score(id) = Σ over legs of 1 / (rank_constant + rank_in_leg).
+// Ids that appear in both legs accumulate higher than those that appear in one.
 // Insertion order in the input legs IS the rank (1-indexed).
 //
-// Tiebreaker: `record_id` ascending. Mirrors the Python sibling's
+// Operates on `record_id` arrays so the legs can fetch ids only (no `_source`)
+// — the page slice is materialised once via `fetchSpeechesByIds` after fusion.
+// On the BBQ-HNSW kNN leg this is a 10–15× win on cold cache (336 KB of full
+// source vs 10 KB of ids for a 100-hit pool).
+//
+// Tiebreaker: id ascending. Mirrors the Python sibling's
 // `sorted(rrf_scores.keys(), key=lambda d: (-rrf_scores[d], d))` so identical
 // queries produce identical orderings across both code paths — important for
 // cache-key stability and reproducibility of any analytics that join on
 // (query, position) pairs.
-function fuseRrf(legs: MoSpeech[][], rankConstant: number = RRF_RANK_CONSTANT): MoSpeech[] {
-  const scored = new Map<string, { doc: MoSpeech; score: number }>();
+function fuseRrfIds(legs: string[][], rankConstant: number = RRF_RANK_CONSTANT): string[] {
+  const scored = new Map<string, number>();
   for (const leg of legs) {
-    leg.forEach((doc, i) => {
+    leg.forEach((id, i) => {
       const rank = i + 1;
       const score = 1 / (rankConstant + rank);
-      const existing = scored.get(doc.record_id);
-      if (existing) {
-        existing.score += score;
-      } else {
-        scored.set(doc.record_id, { doc, score });
-      }
+      scored.set(id, (scored.get(id) ?? 0) + score);
     });
   }
-  return Array.from(scored.values())
+  return Array.from(scored.entries())
     .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.doc.record_id < b.doc.record_id ? -1 : a.doc.record_id > b.doc.record_id ? 1 : 0;
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
     })
-    .map((e) => e.doc);
+    .map(([id]) => id);
 }
 
 async function searchSpeechesBm25(
@@ -659,18 +1001,38 @@ async function searchSpeechesRrf(
     return searchSpeechesBm25(p, page, pageSize);
   }
 
-  // Vectorise the query. If the embed service is unreachable, silently
-  // degrade to BM25-only — Q8 contract: never serve a stale or absent vector.
   const q = p.q?.trim();
   if (!q) return searchSpeechesBm25(p, page, pageSize);
-  const vector = await embedQuery(q);
-  if (!vector) return searchSpeechesBm25(p, page, pageSize);
 
   const filters = speechFilters(p);
-  const [bm25, knn] = await Promise.all([
-    bm25Leg(p, filters, 0, poolSize),
-    knnLeg(vector, filters, poolSize),
-  ]);
+
+  // Fire BM25 and the embed call in parallel — BM25 doesn't need the vector,
+  // and the embed call dominates the non-ES cost (~1 s in production). kNN
+  // chains onto the embed promise so it kicks off the moment the vector is
+  // ready, not after BM25 returns. Total wall-clock = max(BM25_ids, embed +
+  // kNN_ids) + page fetch, vs the old embed + max(BM25, kNN).
+  const bm25Promise = bm25LegIds(p, filters, poolSize);
+  const knnPromise = embedQuery(q).then((vector) =>
+    vector ? knnLegIds(vector, filters, poolSize) : null,
+  );
+  const [bm25, knn] = await Promise.all([bm25Promise, knnPromise]);
+
+  // Embed unreachable: degrade to BM25-only — Q8 contract, never serve a
+  // stale or absent vector. The BM25 pool is already in hand, so we slice it
+  // to the page and fetch full source in one shot rather than re-querying.
+  if (!knn) {
+    const pageIds = bm25.ids.slice(offset, offset + pageSize);
+    const fetched = await fetchSpeechesByIds(pageIds, q);
+    return {
+      hits: fetched.hits,
+      total: bm25.total,
+      page,
+      pageSize,
+      tookMs: bm25.tookMs,
+      highlights: Object.keys(fetched.highlights).length > 0 ? fetched.highlights : undefined,
+      mode: "bm25-only",
+    };
+  }
 
   // BM25 is the relevance gate. BGE-M3 produces a vector for any input
   // (including gibberish), so kNN always returns its top-k — even for
@@ -680,34 +1042,31 @@ async function searchSpeechesRrf(
   // has found at least one lexical anchor. Typos with at least one BM25
   // hit (e.g. "educatie" matching the archaic "educațiunii") still benefit
   // from kNN's expansion.
-  const knnHitsForFusion = bm25.hits.length > 0 ? knn.hits : [];
-  const fused = fuseRrf([bm25.hits, knnHitsForFusion]);
-  const pageHits = fused.slice(offset, offset + pageSize);
+  const knnIdsForFusion = bm25.ids.length > 0 ? knn.ids : [];
+  const fusedIds = fuseRrfIds([bm25.ids, knnIdsForFusion]);
+  const pageIds = fusedIds.slice(offset, offset + pageSize);
 
-  // Highlights only exist for hits that BM25 saw. kNN-only hits render
-  // without a snippet — that's fine; the agenda title still gives context.
-  const highlights: Record<string, string> = {};
-  for (const hit of pageHits) {
-    const snippet = bm25.highlights[hit.record_id];
-    if (snippet) highlights[hit.record_id] = snippet;
-  }
+  // Materialise the page slice (full source + highlights). One ES call.
+  const fetched = await fetchSpeechesByIds(pageIds, q);
 
   // Total: take max of BM25's lexical total and the fused-pool size. This
   // matters when BM25 finds few hits (e.g. typo / no-diacritic query) but
-  // kNN adds dozens of semantic neighbors — the user sees ~poolSize results
+  // kNN adds dozens of semantic neighbours — the user sees ~poolSize results
   // on screen and "1 rezultat" in the header would be a lie. Past poolSize
   // we trust BM25's total because that's what the deep-paging fallback can
   // actually serve.
-  const total = Math.max(bm25.total, fused.length);
+  const total = Math.max(bm25.total, fusedIds.length);
 
   return {
-    hits: pageHits,
+    hits: fetched.hits,
     total,
     page,
     pageSize,
     // Legs ran in parallel; report the slower one as the wall-clock cost.
+    // The page-slice fetch is small and uncounted (it's a downstream cost
+    // shared with the BM25-only fallback).
     tookMs: Math.max(bm25.tookMs, knn.tookMs),
-    highlights: Object.keys(highlights).length > 0 ? highlights : undefined,
+    highlights: Object.keys(fetched.highlights).length > 0 ? fetched.highlights : undefined,
     mode: "rrf",
   };
 }

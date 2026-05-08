@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SiteNavDesktop, SiteNavMobile } from "@/components/site-nav";
 import { SiteSearch } from "@/components/site-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -10,25 +11,13 @@ export function SiteHeader() {
         <Link href="/" className="font-display text-[18px] leading-none tracking-tight">
           monitorul<span className="text-ink-45">.ai</span>
         </Link>
-        <nav aria-label="Navigare principală" className="hidden md:flex items-center gap-5">
-          <HeaderLink href="/mo">Sesiuni</HeaderLink>
-          <HeaderLink href="/politicieni">Politicieni</HeaderLink>
-          <HeaderLink href="/comisii">Comisii</HeaderLink>
-          <HeaderLink href="/despre">Despre</HeaderLink>
-        </nav>
-        <div className="ml-auto flex-1 max-w-md">
+        <SiteNavDesktop />
+        <div className="ml-auto max-w-md flex-1">
           <SiteSearch />
         </div>
         <ThemeToggle />
       </div>
+      <SiteNavMobile />
     </header>
-  );
-}
-
-function HeaderLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link href={href} className="label-mono text-ink-30 transition-colors hover:text-ink-16">
-      {children}
-    </Link>
   );
 }

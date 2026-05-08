@@ -18,18 +18,73 @@ export interface EmbedResponse {
   dims: number;
 }
 
+// Process-local LRU on `(provider, model/url, trimmed_text) → vector`. The
+// embed-service round-trip is the dominant non-ES cost on `searchSpeeches`
+// (~1 s in production). BGE-M3 is deterministic — same input → same vector —
+// so the cache is invariant under repeat queries by design. Capacity 500
+// entries × ~32 KB per 1024-dim vector ≈ 16 MB resident; tune via the
+// constant below if the working set grows past it.
+//
+// Model-bump safety: the cache key includes the live provider's model
+// identifier. For cloud, that's `EMBED_CLOUD_MODEL`; for local, the
+// `EMBED_URL` (env-level changes spawn a fresh process with an empty cache).
+// A model swap behind the same URL during a single process lifetime would
+// poison the cache — accepted as exotic; serverless/container restarts on
+// every deploy bound the worst-case staleness window.
+//
+// Failures are NOT cached: a transient embed-service outage returns null
+// once and is retried on the next call rather than being remembered.
+const QUERY_VECTOR_CACHE_CAPACITY = 500;
+const queryVectorCache = new Map<string, number[]>();
+
+function cacheKey(text: string): string {
+  if (env.EMBED_PROVIDER === "cloud") {
+    return `cloud:${env.EMBED_CLOUD_MODEL ?? ""}:${text}`;
+  }
+  return `local:${env.EMBED_URL ?? ""}:${text}`;
+}
+
+function cacheLookup(text: string): number[] | undefined {
+  const key = cacheKey(text);
+  const v = queryVectorCache.get(key);
+  if (!v) return undefined;
+  // LRU bump: delete + reinsert moves the entry to the most-recently-used end
+  // of `Map`'s insertion order, so the next eviction targets the actual LRU.
+  queryVectorCache.delete(key);
+  queryVectorCache.set(key, v);
+  return v;
+}
+
+function cacheStore(text: string, vector: number[]): void {
+  const key = cacheKey(text);
+  if (queryVectorCache.has(key)) {
+    queryVectorCache.delete(key);
+  } else if (queryVectorCache.size >= QUERY_VECTOR_CACHE_CAPACITY) {
+    const oldest = queryVectorCache.keys().next().value;
+    if (oldest !== undefined) queryVectorCache.delete(oldest);
+  }
+  queryVectorCache.set(key, vector);
+}
+
 /**
  * Vectorise a single text via the configured embed provider (`EMBED_PROVIDER`).
  * Returns `null` on any failure (missing creds for the active provider, network
  * error, timeout, non-200, malformed body). The caller is expected to silently
  * degrade to BM25-only — see Q8 of the design doc on hybrid contract: "If the
  * embed service is unreachable, RRF mode silently degrades to BM25-only."
+ *
+ * Repeat calls with the same text hit a process-local LRU and skip the
+ * service round-trip entirely.
  */
 export async function embedQuery(text: string): Promise<number[] | null> {
   const trimmed = text.trim();
   if (!trimmed) return null;
-  if (env.EMBED_PROVIDER === "cloud") return embedViaCloud(trimmed);
-  return embedViaLocal(trimmed);
+  const cached = cacheLookup(trimmed);
+  if (cached) return cached;
+  const vector =
+    env.EMBED_PROVIDER === "cloud" ? await embedViaCloud(trimmed) : await embedViaLocal(trimmed);
+  if (vector) cacheStore(trimmed, vector);
+  return vector;
 }
 
 // Local FastAPI service shipped with monitorul-ii (POST /embed).
