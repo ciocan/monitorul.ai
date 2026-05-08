@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Dateline } from "@/components/dateline";
+import { DocumentStickyHeader } from "@/components/document-sticky-header";
 import { env } from "@/env";
 import {
   agendaCategoryLabel,
@@ -101,9 +102,20 @@ export default async function DocumentPage({ params }: PageProps) {
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
       <DocumentJsonLd doc={doc} />
 
+      <DocumentStickyHeader
+        type={documentTypeLabel(doc.document_type)}
+        title={doc.title}
+        issue={doc.issue}
+        year={doc.year}
+        part={doc.part}
+        chamber={doc.chamber}
+        sessionDate={sessionDate}
+        sentinelId="doc-header"
+      />
+
       <Dateline parts={["Monitorul Oficial", `Partea ${doc.part}`, doc.chamber, sessionDate]} />
 
-      <header className="mt-6 border-b border-border pb-8">
+      <header id="doc-header" className="mt-6 border-b border-border pb-8">
         <h1 className="font-display text-4xl leading-tight text-ink-16 sm:text-5xl">
           {documentTypeLabel(doc.document_type)}
         </h1>
