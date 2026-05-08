@@ -128,7 +128,6 @@ function logQuery(entry: QueryLogEntry): void {
   if (!env.QUERY_LOG_WRITE) return;
   after(async () => {
     try {
-      console.log("----- after -----", { entry });
       await esClient().index({ index: QUERY_LOG_INDEX, document: entry });
     } catch {
       // best-effort
