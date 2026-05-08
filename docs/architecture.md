@@ -109,6 +109,8 @@ Functions (current shape):
 - `getDocument` / `getAgendaItem` / `getSpeech` / `getReport` — single lookup by `record_id`.
 - `listDocumentsByDate(date, chamber?)` / `listCommitteeMeetings(committeeId, dateFrom?)`
 - `personPage(slug, { year?, day? })` — composite payload for `/politicieni/<slug>`. Two ES queries run in parallel: a **filtered** speech search narrowed to `year` or `day` (drives the speeches list, returns up to 50 hits for a day filter, 10 otherwise), and an **unfiltered** career-long aggregation (drives the year sparkbar + stats fallback). `day` implies year (parsed from the date string); a separate per-day `date_histogram` runs sequentially after for the heatmap of the selected calendar year.
+- `committeesIndex({ year? })` — composite payload for `/comisii`. Per-year meeting counts via `date_histogram` on `meeting_date` (calendar_interval=year), top 100 committees by meeting count for the selected year via a `terms` agg on `committee_id` with sub-aggs (`first_date`, `last_date`, `name_sample` top_hits — same idiom as the politician rank), and a `cardinality` over `committee_id` for the archive-wide registry size. There is no upstream `mo-committees` index; the registry is derived live from `mo-committee-meetings`.
+- `committeePage(committee_id, { year? })` — composite payload for `/comisii/<committee_id>`. One aggregation pass derives the header (latest-meeting `name`/`kind`/`joint_with` via `top_hits`, plus `min`/`max` meeting date and the per-year `date_histogram`); a follow-up `_search` lists meetings for the selected year (sorted by `meeting_date` desc, capped at 50). Returns `null` when the committee has zero meetings so the route can call `notFound()`.
 - `searchPersons(q)` — `multi_match` with `operator: and` over `canonical_name` (+ `.folded` subfield) and `aliases`.
 - `aggSpeechesByPartyYear({ year?, chamber? })` — nested `terms` agg on `speaker.party_group_at_time × year`.
 - `getArchiveStats()` — homepage stats register; ten parallel `_count` calls (one per grain + a `is_substantive: true` filter on speeches) wrapped in `Promise.allSettled` so a partial outage doesn't blank the section.
@@ -216,12 +218,62 @@ Each row also surfaces a word count + 5-segment length meter (xs <30, s 30–99,
 
 **Speaker→person link gate.** Speech blocks on the document page wrap the speaker name in a `<Link>` only when `speaker.person_id` is non-null. The upstream linking pass (`monitorul-ii backfill --kind=persons` + `monitorul-ii index --force --grain=mo-speeches`) is what populates that field — running on the corpus right now. While it's mid-pass, most speakers render as plain text and the URL is unreachable; as soon as a speech is linked, the same render path produces a working link with no frontend revisit. `/politicieni/<slug>` itself is reachable for any person record (13K+ today), independent of the linking pass.
 
+## Committee pages
+
+`/comisii` and `/comisii/[committee_id]` together form the committee registry. Both pages are derived live from `mo-committee-meetings` because **there is no `mo-committees` index upstream** — committees only exist in the public record as the headers on indexed meetings. A committee with zero indexed meetings is therefore invisible to the registry; this is intentional, since this site is the read surface over the published archive.
+
+`committeesIndex({ year? })` (the index payload) runs three queries:
+
+- A `date_histogram` over `meeting_date` (`calendar_interval: year`, `min_doc_count: 1`) for the per-year sparkbar — same shape as the politicians sparkbar, but counted in meetings rather than speeches.
+- A `terms` aggregation on `committee_id` (size 100, ordered by `_count: desc`) over the year-filtered meeting set, with sub-aggregations for `min`/`max` `meeting_date` and a `top_hits` (size 1, sorted by `meeting_date: desc`) that surfaces the most recent spelling of `committee_name` / `committee_kind` / `joint_with` — the upstream pipeline keeps these consistent across re-extractions but not strictly invariant, so the latest meeting is treated as the canonical source. A sibling `cardinality` agg on `committee_id` returns the in-scope committee count.
+- A separate `cardinality` over `committee_id` against the unfiltered index for the registry-wide total surfaced in the dateline.
+
+`committeePage(committee_id, { year? })` (the profile payload) runs at most two queries: one composite aggregation with a `top_hits` sample for the header, `min`/`max` meeting dates, and the per-year `date_histogram` for this committee's sparkbar; then if the committee has any meetings, a follow-up `_search` returns the meeting list for the selected year (sorted by `meeting_date: desc`, capped at `MAX_PAGE_SIZE = 50`). When `track_total_hits` reports zero meetings, the function returns `null` so the page calls `notFound()` rather than rendering an empty fiche.
+
+Layout: dateline (`Registrul comisiilor` · kind label · `comună` if `joint_with` is non-empty · year span) → name + joint-with paragraph → meta register (`Ședințe` / `Prima ședință` / `Ultima ședință` / `Identificator`) → year sparkbar → meeting list. Each meeting row shows: `meeting_date` (mono), optional `purpose` chip, the first non-empty `agenda_items[].title` as the one-liner, then a meta strip (`format`, attendance ratio computed client-side from `roster[].status === "present"`, agenda-item count) and a footer of outcome counts (`agenda_outcomeLabel(o): N`, sorted by count desc). JSON-LD emits a `GovernmentOrganization` node with `identifier: committee_id`, `foundingDate: firstMeetingDate`, and a `description` derived from `committeeKindLabel(kind)`.
+
+The kind chip uses `committeeKindLabel` in [`src/lib/format.ts`](../src/lib/format.ts), which maps the upstream enum (`permanent` / `special` / `joint` / `inquiry` / `mediation`, plus their Romanian-spelled variants) to the corresponding Romanian label. Unknown values pass through with underscores swapped for spaces so a new upstream kind is rendered legibly without a code change.
+
+`?year=` is non-canonical on both pages — `generateMetadata` always sets `alternates.canonical` to the bare URL (`/comisii` or `/comisii/<committee_id>`), matching the convention on `/mo` and `/politicieni`. ISR is 1 hour. The 50-meeting cap on the profile page is currently unsourced for committees with denser schedules; an explicit pagination layer will land alongside the rest of the per-grain detail routes.
+
+## Methodology page (`/despre`)
+
+`/despre` is the long-form note that explains what monitorul.ai is, where the data comes from, why links stay stable, how search works, and where to flag errors. It is a static editorial surface — no Elasticsearch reads, no derived stats — so the route is plain server JSX with `revalidate = 3600` to match the rest of the site.
+
+**Two-part structure.** The page is split deliberately, not just chunked. Most readers (citizens, journalists, students, NGO researchers without a tech background) need a plain-language overview, no jargon. A smaller cohort (data journalists, civic-tech researchers, devs using the archive as a reproducible source) needs the depth — pipeline steps, identity guarantees, search internals. Stuffing both audiences into one continuous narrative either patronises the second cohort or alienates the first; splitting visually-and-anchorably resolves that.
+
+| Part                          | Audience                                | Anchors                                                                                |
+| ----------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------- |
+| **I — Pentru toți cititorii** | citizens / journalists / casual readers | `#ce-este`, `#de-unde`, `#acoperire`, `#identitate`, `#cautare`, `#corectii`, `#sursa` |
+| **II — Detalii tehnice**      | data journalists / researchers / devs   | `#pipeline`, `#identitate-tehnic`, `#cautare-tehnic`                                   |
+
+**What lives where.**
+
+- Part I `#ce-este` — one-paragraph mission + the disclaimer that this is not the official source.
+- Part I `#de-unde` — high-level "where the data comes from" framing (programul descarcă PDF-uri, citește, nu adaugă, nu interpretează). Cross-links down to `#pipeline` for the technical reader.
+- Part I `#acoperire` — scope (Partea II only), the low-coverage cohort caveat, the partial-completeness state of the politician registry, the indexing window.
+- Part I `#identitate` — plain-language "stable links as a design contract" framing, with a cross-link down to `#identitate-tehnic` for the mechanism.
+- Part I `#cautare` — plain "exact words + similar meaning" framing, the `Hibrid` / `BM25` chip explained, with a cross-link down to `#cautare-tehnic` for BM25/kNN/RRF.
+- Part I `#corectii` — four plain-Romanian error categories (atribuire greșită / tăiere greșită / referințe nelegate / acoperire incompletă) + the "open an issue" CTA + redaction note.
+- Part I `#sursa` — source attribution (monitoruloficial.ro, cdep.ro, senat.ro), the Partea I vs Partea II boundary, and links to both code repos.
+- Part II `#pipeline` — the 8-step register (fetch / convert / classify / extract / link / backfill / embed / index) with the "ES is a derivation, sidecars on disk are SOT" note.
+- Part II `#identitate-tehnic` — `record_id` shape per grain, the `content_fingerprint` forensic key, the `slug-once` URL contract, and the cross-consumer keying argument.
+- Part II `#cautare-tehnic` — BM25 + kNN/RRF, the `.folded` subfields, the silent-degrade gates (empty query, embed unavailable, deep pagination, zero BM25 hits), and the native-RRF licensing note.
+
+**Footer URL contract.** The site footer's Metodologie column links to `#identitate` and `#corectii`. Both live in Part I, so a non-technical reader following the footer lands on the plain-language version first. Inside Part I, both sections carry an inline cross-link down to their Part II counterpart for readers who want depth.
+
+**Heading outline.** `<h1>` is the page title. Both parts open with an `<h2>` (Part header). Sections inside each part use `<h3>`, so the document outline reflects the two-part nesting rather than reading as a flat 11-section list. The `Cuprins` is rendered as two side-by-side columns (one per part) so the page structure is visible from the top.
+
+JSON-LD emits an `AboutPage` node with `isPartOf` pointing at the WebSite entity. The page sets `alternates.canonical = "/despre"` and stays indexable. No external dependencies — the only imports are `next/link`, the `Dateline` signature component, and the validated `env` for the JSON-LD `@id` URL.
+
 ## Document page playback
 
 `/mo/[year]/[part]/[issue]` renders two stacked sections:
 
-1. **Cuprins (TOC)** — one row per agenda item with category / outcome / cited-bills metadata. Until the dedicated `/agenda/<ord>` route ships, each row links to an in-page anchor (`#agenda-<ord>`).
-2. **Stenograma (body)** — for each agenda item (in `position_in_document` ASC), a section header + an ordered list of every child record under it: speeches (full text, paragraph-split on blank lines, addressable as `#discurs-<position_in_document>`), votes (outcome + counts), interpellations (questioner / topic / question text), and questions (regnum / questioner / topic). Children that arrive before the first agenda boundary fall into an unlabelled leading section.
+1. **Cuprins (TOC)** — one row per agenda item with category / outcome / cited-bills metadata. Until the dedicated `/agenda/<ord>` route ships, each row links to an in-page anchor (`#agenda-<ord>`). When the document has no agenda items (typical for `committee_synthesis` issues), the section shows a quiet inline note instead of an `Empty` block.
+2. **Stenograma / Ședințe (body)** — for each agenda item (in `position_in_document` ASC), a section header + an ordered list of every child record under it: speeches (full text, paragraph-split on blank lines, addressable as `#discurs-<position_in_document>`), votes (outcome + counts), interpellations (questioner / topic / question text), questions (regnum / questioner / topic), and committee meetings (date, linked committee name, kind / joint-with chips, agenda items list, attendance ratio, outcome counts; addressable as `#comisie-<position_in_document>`). Children that arrive before the first agenda boundary fall into an unlabelled leading section. The heading switches from "Stenograma" to "Ședințe" when the document has no agenda items but does have committee meetings — `committee_synthesis` issues, where the body IS the meeting register.
+
+`listDocumentChildren` fans out across six per-doc child indices (`mo-agenda-items`, `mo-speeches`, `mo-votes`, `mo-interpellations`, `mo-questions`, `mo-committee-meetings`) in a single multi-index search and re-classifies each hit by `_index` prefix on the way back. Sort is `position_in_document` ASC across grains, so meetings interleave with the rest of the body in source order. The 500-row size cap is sized for the biggest plenary sittings; committee-synthesis issues run under 30 meetings and the largest plenary stenograms ship ~100 speeches plus their satellites.
 
 The page does not filter on `is_substantive` — the whole stenographic record is shown, including procedural turns, because this is the archive surface, not the search surface.
 

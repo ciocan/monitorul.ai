@@ -94,6 +94,32 @@ export function agendaOutcomeLabel(o: string | null | undefined): string | null 
   return AGENDA_OUTCOME_LABEL[key] ?? o.replace(/_/g, " ");
 }
 
+// Romanian labels for the upstream `committee_kind` enum surfaced on the
+// committees index and profile pages. Unknown values pass through with
+// underscores swapped for spaces so we don't drop information when the
+// upstream pipeline introduces a new kind.
+const COMMITTEE_KIND_LABEL: Record<string, string> = {
+  permanent: "Permanentă",
+  permanenta: "Permanentă",
+  special: "Specială",
+  speciala: "Specială",
+  joint: "Comună",
+  comuna: "Comună",
+  inquiry: "De anchetă",
+  ancheta: "De anchetă",
+  investigation: "De anchetă",
+  mediation: "De mediere",
+  mediere: "De mediere",
+  standing: "Permanentă",
+  select: "Specială",
+};
+
+export function committeeKindLabel(k: string | null | undefined): string | null {
+  if (!k) return null;
+  const key = k.toLowerCase().replace(/\s+/g, "_");
+  return COMMITTEE_KIND_LABEL[key] ?? k.replace(/_/g, " ");
+}
+
 export function pluralRo(count: number, one: string, few: string, many: string): string {
   const abs = Math.abs(count);
   if (abs === 1) return `${count} ${one}`;

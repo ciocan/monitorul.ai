@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { SiteNavDesktop, SiteNavMobile } from "@/components/site-nav";
 import { SiteSearch } from "@/components/site-search";
+import { SiteSearchNav } from "@/components/site-search-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function SiteHeader() {
@@ -15,9 +16,9 @@ export function SiteHeader() {
           monitorul<span className="text-ink-45">.ai</span>
         </Link>
         <SiteNavDesktop />
-        <div className="ml-auto max-w-md flex-1">
+        <SiteSearchNav>
           <SiteSearch />
-        </div>
+        </SiteSearchNav>
         <ThemeToggle />
         <SiteNavMobile />
       </div>

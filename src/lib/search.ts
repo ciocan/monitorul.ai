@@ -8,6 +8,10 @@ import { embedQuery } from "./embed";
 import { ES_INDEX, QUERY_LOG_INDEX, esClient } from "./es-client";
 import type {
   Chamber,
+  CommitteePagePayload,
+  CommitteeRankRow,
+  CommitteeYearCount,
+  CommitteesIndexPayload,
   Grain,
   MoAgendaItem,
   MoCommitteeMeeting,
@@ -42,7 +46,8 @@ type ChildGrainHit =
   | ({ grain: "speeches" } & MoSpeech)
   | ({ grain: "votes" } & MoVote)
   | ({ grain: "interpellations" } & MoInterpellation)
-  | ({ grain: "questions" } & MoQuestion);
+  | ({ grain: "questions" } & MoQuestion)
+  | ({ grain: "committee-meetings" } & MoCommitteeMeeting);
 
 type ServedMode = "rrf" | "bm25-only";
 
@@ -241,6 +246,11 @@ export async function listDocumentChildren(documentId: string): Promise<{
         ES_INDEX.votes,
         ES_INDEX.interpellations,
         ES_INDEX.questions,
+        // Committee meetings are per-doc children too — `committee_synthesis`
+        // documents are typically *only* meetings, with no agenda/speeches at
+        // all. Including them here lets the document page render meetings
+        // inline rather than show an empty playback section.
+        ES_INDEX.committeeMeetings,
       ].join(","),
       size: 500,
       query: { bool: { filter: [filter] } },
@@ -271,6 +281,11 @@ export async function listDocumentChildren(documentId: string): Promise<{
         });
       } else if (idx.startsWith("mo-questions")) {
         children.push({ grain: "questions", ...(src as unknown as MoQuestion) });
+      } else if (idx.startsWith("mo-committee-meetings")) {
+        children.push({
+          grain: "committee-meetings",
+          ...(src as unknown as MoCommitteeMeeting),
+        });
       }
     }
     agenda.sort((a, b) => a.ordinal - b.ordinal);
@@ -606,6 +621,314 @@ export async function politiciansIndex(
       },
       esTookMs: null,
       hitsTotal: topPersons.length,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Committees index (`/comisii`): top-N by meeting count for the selected
+// year, alongside per-year totals for the sparkbar. There is no upstream
+// `mo-committees` index — the registry is derived live from
+// `mo-committee-meetings`, so a committee with zero meetings is invisible
+// to the registry. Acceptable: this site indexes the public record.
+
+const COMMITTEE_RANK_LIMIT = 100;
+
+interface CommitteeMeetingNameSample {
+  committee_name?: string;
+  committee_kind?: string | null;
+  joint_with?: string[] | null;
+}
+
+interface CommitteeBucketRaw {
+  committeeId: string;
+  meetingCount: number;
+  firstMeetingDate: string | null;
+  lastMeetingDate: string | null;
+  // Latest-meeting spelling of the committee's display fields. Used as the
+  // canonical naming source since there's no `mo-committees` index.
+  name: string;
+  kind: string | null;
+  jointWith: string[] | null;
+}
+
+interface CommitteeRankAggResult {
+  buckets: CommitteeBucketRaw[];
+  distinctCommittees: number;
+  totalMeetings: number;
+}
+
+function committeeRankFilters(opts: { year: number | null }): QueryDslQueryContainer[] {
+  const filters: QueryDslQueryContainer[] = [{ exists: { field: "committee_id" } }];
+  if (opts.year !== null) {
+    filters.push({
+      range: {
+        meeting_date: {
+          gte: `${opts.year}-01-01`,
+          lte: `${opts.year}-12-31`,
+        },
+      },
+    });
+  }
+  return filters;
+}
+
+async function fetchCommitteeYearCounts(): Promise<CommitteeYearCount[]> {
+  const res = await esClient().search({
+    index: ES_INDEX.committeeMeetings,
+    size: 0,
+    query: { bool: { filter: [{ exists: { field: "meeting_date" } }] } },
+    aggs: {
+      by_year: {
+        date_histogram: {
+          field: "meeting_date",
+          calendar_interval: "year",
+          min_doc_count: 1,
+          format: "yyyy",
+        },
+      },
+    },
+  });
+  const buckets =
+    (
+      res.aggregations as
+        | { by_year: { buckets: Array<{ key_as_string?: string; doc_count: number }> } }
+        | undefined
+    )?.by_year.buckets ?? [];
+  return buckets.flatMap((b) => {
+    const year = b.key_as_string ? Number.parseInt(b.key_as_string, 10) : Number.NaN;
+    if (!Number.isInteger(year)) return [];
+    if (year < SESSION_YEAR_MIN || year > SESSION_YEAR_MAX) return [];
+    return [{ year, count: b.doc_count }];
+  });
+}
+
+async function fetchTopCommitteeBuckets(opts: {
+  year: number | null;
+}): Promise<CommitteeRankAggResult> {
+  const filters = committeeRankFilters(opts);
+  const res = await esClient().search({
+    index: ES_INDEX.committeeMeetings,
+    size: 0,
+    track_total_hits: true,
+    query: { bool: { filter: filters } },
+    aggs: {
+      by_committee: {
+        terms: {
+          field: "committee_id",
+          size: COMMITTEE_RANK_LIMIT,
+          order: { _count: "desc" },
+        },
+        aggs: {
+          first_date: { min: { field: "meeting_date" } },
+          last_date: { max: { field: "meeting_date" } },
+          // Most-recent meeting for each committee carries the freshest
+          // spelling of its display fields — same idiom as the politician
+          // rank `name_sample`.
+          name_sample: {
+            top_hits: {
+              size: 1,
+              sort: [{ meeting_date: { order: "desc" } }],
+              _source: ["committee_name", "committee_kind", "joint_with"],
+            },
+          },
+        },
+      },
+      distinct_committees: { cardinality: { field: "committee_id" } },
+    },
+  });
+  const aggs = res.aggregations as
+    | {
+        by_committee: {
+          buckets: Array<{
+            key: string;
+            doc_count: number;
+            first_date: { value_as_string?: string };
+            last_date: { value_as_string?: string };
+            name_sample: {
+              hits: {
+                hits: Array<{ _source?: CommitteeMeetingNameSample }>;
+              };
+            };
+          }>;
+        };
+        distinct_committees: { value: number };
+      }
+    | undefined;
+  const buckets = (aggs?.by_committee.buckets ?? []).map((b): CommitteeBucketRaw => {
+    const sample = b.name_sample.hits.hits[0]?._source;
+    return {
+      committeeId: b.key,
+      meetingCount: b.doc_count,
+      firstMeetingDate: b.first_date.value_as_string ?? null,
+      lastMeetingDate: b.last_date.value_as_string ?? null,
+      name: sample?.committee_name ?? b.key,
+      kind: sample?.committee_kind ?? null,
+      jointWith: sample?.joint_with && sample.joint_with.length > 0 ? sample.joint_with : null,
+    };
+  });
+  return {
+    buckets,
+    distinctCommittees: aggs?.distinct_committees.value ?? 0,
+    totalMeetings: totalOf(res.hits.total),
+  };
+}
+
+async function fetchTotalCommitteeCount(): Promise<number> {
+  const res = await esClient().search({
+    index: ES_INDEX.committeeMeetings,
+    size: 0,
+    track_total_hits: false,
+    aggs: { distinct_committees: { cardinality: { field: "committee_id" } } },
+  });
+  return (
+    (res.aggregations as { distinct_committees: { value: number } } | undefined)
+      ?.distinct_committees.value ?? 0
+  );
+}
+
+export async function committeesIndex(
+  opts: { year?: number } = {},
+): Promise<CommitteesIndexPayload> {
+  return timed("committeesIndex", opts, async () => {
+    const requestedYear =
+      opts.year && opts.year >= SESSION_YEAR_MIN && opts.year <= SESSION_YEAR_MAX
+        ? opts.year
+        : null;
+    const yearlyCounts = await fetchCommitteeYearCounts();
+    const fallbackYear = yearlyCounts.at(-1)?.year ?? null;
+    const selectedYear = requestedYear ?? fallbackYear;
+    const [rank, totalCommittees] = await Promise.all([
+      fetchTopCommitteeBuckets({ year: selectedYear }),
+      fetchTotalCommitteeCount(),
+    ]);
+    const topCommittees: CommitteeRankRow[] = rank.buckets.map((b) => ({
+      committeeId: b.committeeId,
+      name: b.name,
+      kind: b.kind,
+      jointWith: b.jointWith,
+      meetingCount: b.meetingCount,
+      firstMeetingDate: b.firstMeetingDate,
+      lastMeetingDate: b.lastMeetingDate,
+    }));
+    return {
+      result: {
+        yearlyCounts,
+        topCommittees,
+        selectedYear,
+        totalCommittees,
+        committeesInScope: rank.distinctCommittees,
+        meetingsInScope: rank.totalMeetings,
+      },
+      esTookMs: null,
+      hitsTotal: topCommittees.length,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Committee page (`/comisii/<committee_id>`): aggregates header / yearly
+// counts in one search, then fetches the meeting list for the selected year
+// in a second pass. Returns null when the committee_id has no meetings —
+// the page calls notFound() in that case.
+
+export async function committeePage(
+  committeeId: string,
+  opts: { year?: number } = {},
+): Promise<CommitteePagePayload | null> {
+  return timed("committeePage", { committeeId, ...opts }, async () => {
+    const requestedYear =
+      opts.year && opts.year >= SESSION_YEAR_MIN && opts.year <= SESSION_YEAR_MAX
+        ? opts.year
+        : null;
+    const headerRes = await esClient().search({
+      index: ES_INDEX.committeeMeetings,
+      size: 0,
+      track_total_hits: true,
+      query: { bool: { filter: [{ term: { committee_id: committeeId } }] } },
+      aggs: {
+        first_date: { min: { field: "meeting_date" } },
+        last_date: { max: { field: "meeting_date" } },
+        name_sample: {
+          top_hits: {
+            size: 1,
+            sort: [{ meeting_date: { order: "desc" } }],
+            _source: ["committee_name", "committee_kind", "joint_with"],
+          },
+        },
+        by_year: {
+          date_histogram: {
+            field: "meeting_date",
+            calendar_interval: "year",
+            min_doc_count: 1,
+            format: "yyyy",
+          },
+        },
+      },
+    });
+    const totalMeetings = totalOf(headerRes.hits.total);
+    if (totalMeetings === 0) {
+      return { result: null, esTookMs: headerRes.took ?? null, hitsTotal: 0 };
+    }
+    const headerAggs = headerRes.aggregations as
+      | {
+          first_date: { value_as_string?: string };
+          last_date: { value_as_string?: string };
+          name_sample: {
+            hits: { hits: Array<{ _source?: CommitteeMeetingNameSample }> };
+          };
+          by_year: { buckets: Array<{ key_as_string?: string; doc_count: number }> };
+        }
+      | undefined;
+    const sample = headerAggs?.name_sample.hits.hits[0]?._source;
+    const yearlyCounts: CommitteeYearCount[] = (headerAggs?.by_year.buckets ?? []).flatMap((b) => {
+      const year = b.key_as_string ? Number.parseInt(b.key_as_string, 10) : Number.NaN;
+      if (!Number.isInteger(year)) return [];
+      if (year < SESSION_YEAR_MIN || year > SESSION_YEAR_MAX) return [];
+      return [{ year, count: b.doc_count }];
+    });
+    const fallbackYear = yearlyCounts.at(-1)?.year ?? null;
+    const selectedYear = requestedYear ?? fallbackYear;
+    let meetings: MoCommitteeMeeting[] = [];
+    let meetingsInYear = 0;
+    if (selectedYear !== null) {
+      const filters: QueryDslQueryContainer[] = [
+        { term: { committee_id: committeeId } },
+        {
+          range: {
+            meeting_date: {
+              gte: `${selectedYear}-01-01`,
+              lte: `${selectedYear}-12-31`,
+            },
+          },
+        },
+      ];
+      const listRes = await esClient().search<MoCommitteeMeeting>({
+        index: ES_INDEX.committeeMeetings,
+        size: MAX_PAGE_SIZE,
+        track_total_hits: true,
+        query: { bool: { filter: filters } },
+        sort: [{ meeting_date: { order: "desc" } }],
+      });
+      meetings = listRes.hits.hits.flatMap((h) => (h._source ? [h._source] : []));
+      meetingsInYear = totalOf(listRes.hits.total);
+    }
+    return {
+      result: {
+        committeeId,
+        name: sample?.committee_name ?? committeeId,
+        kind: sample?.committee_kind ?? null,
+        jointWith: sample?.joint_with && sample.joint_with.length > 0 ? sample.joint_with : null,
+        firstMeetingDate: headerAggs?.first_date.value_as_string ?? null,
+        lastMeetingDate: headerAggs?.last_date.value_as_string ?? null,
+        totalMeetings,
+        yearlyCounts,
+        selectedYear,
+        meetings,
+        meetingsInYear,
+      },
+      esTookMs: headerRes.took ?? null,
+      hitsTotal: meetings.length,
     };
   });
 }

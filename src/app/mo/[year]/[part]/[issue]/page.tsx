@@ -9,7 +9,9 @@ import { env } from "@/env";
 import {
   agendaCategoryLabel,
   agendaOutcomeLabel,
+  committeeKindLabel,
   documentTypeLabel,
+  formatCount,
   formatDate,
   pluralRo,
   sessionTypeLabel,
@@ -18,6 +20,7 @@ import { isPdfBucketConfigured, pdfKeyForDocument } from "@/lib/pdf";
 import { type ChildGrainHit, getDocument, listDocumentChildren } from "@/lib/search";
 import type {
   MoAgendaItem,
+  MoCommitteeMeeting,
   MoDocument,
   MoInterpellation,
   MoQuestion,
@@ -90,6 +93,14 @@ export default async function DocumentPage({ params }: PageProps) {
   const sessionDate = formatDate(doc.session_date);
   const publishedDate = formatDate(doc.published);
   const hasBody = children.some((c) => c.grain !== "agenda-items");
+  // When the document has no agenda items but does have committee meetings
+  // (typical for `committee_synthesis` issues), the body is the meeting list,
+  // not a stenographic transcript — relabel the section heading accordingly.
+  const bodyOnlyCommitteeMeetings =
+    agenda.length === 0 &&
+    children.some((c) => c.grain === "committee-meetings") &&
+    children.every((c) => c.grain === "agenda-items" || c.grain === "committee-meetings");
+  const bodyHeading = bodyOnlyCommitteeMeetings ? "Ședințe" : "Stenograma";
   // PDF link is conditional: bucket creds must be configured AND the document
   // must have a `published` date (the bucket key is derived from it). Rather
   // than HEAD-checking the bucket on every render, we trust the upstream
@@ -144,13 +155,13 @@ export default async function DocumentPage({ params }: PageProps) {
         <h2 id="cuprins" className="label-mono mb-4 text-ink-30">
           Cuprins
         </h2>
-        {agenda.length === 0 ? <EmptyAgenda doc={doc} /> : <AgendaList agenda={agenda} />}
+        {agenda.length === 0 ? <EmptyAgenda /> : <AgendaList agenda={agenda} />}
       </section>
 
       {hasBody ? (
         <section className="mt-12" aria-labelledby="stenograma">
           <h2 id="stenograma" className="label-mono mb-6 text-ink-30">
-            Stenograma
+            {bodyHeading}
           </h2>
           <DocumentBody entries={children} />
         </section>
@@ -402,6 +413,8 @@ function BodyEntry({ entry }: { entry: ChildGrainHit }) {
       return <InterpellationBlock item={entry} />;
     case "questions":
       return <QuestionBlock item={entry} />;
+    case "committee-meetings":
+      return <CommitteeMeetingBlock meeting={entry} />;
     default:
       return null;
   }
@@ -508,7 +521,103 @@ function QuestionBlock({ item }: { item: MoQuestion }) {
   );
 }
 
-function EmptyAgenda({ doc }: { doc: MoDocument }) {
+function CommitteeMeetingBlock({ meeting }: { meeting: MoCommitteeMeeting }) {
+  const meetingDate = formatDate(meeting.meeting_date);
+  const rosterCount = meeting.roster?.length ?? 0;
+  const presentCount =
+    meeting.roster?.filter((r) => r.status?.toLowerCase() === "present").length ?? 0;
+  const meta = [
+    committeeKindLabel(meeting.committee_kind),
+    meeting.joint_with && meeting.joint_with.length > 0 ? "comună" : null,
+    meeting.format,
+    rosterCount > 0 ? `${formatCount(presentCount)}/${formatCount(rosterCount)} prezenți` : null,
+  ].filter((m): m is string => Boolean(m));
+  const outcomes = aggregateMeetingOutcomes(meeting);
+  const anchorId = `comisie-${meeting.position_in_document ?? meeting.committee_id}`;
+  return (
+    <li
+      id={anchorId}
+      className="scroll-mt-20 px-1 py-6 target:bg-paper-96 target:-mx-1 target:px-2"
+    >
+      <p className="label-mono text-ink-45">
+        Ședință de comisie{meetingDate ? ` · ${meetingDate}` : ""}
+      </p>
+      <p className="mt-2 font-mono text-base font-semibold leading-tight text-ink-16">
+        <Link
+          href={`/comisii/${encodeURIComponent(meeting.committee_id)}`}
+          className="underline decoration-paper-91 underline-offset-4 hover:decoration-ink-30"
+        >
+          {meeting.committee_name}
+        </Link>
+      </p>
+      {meeting.purpose ? (
+        <p className="mt-2 text-sm leading-snug text-ink-30">{meeting.purpose}</p>
+      ) : null}
+      {meta.length > 0 ? (
+        <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 label-mono text-ink-45">
+          {meta.map((part, i) => (
+            <span key={`${i}-${part}`}>{part}</span>
+          ))}
+        </p>
+      ) : null}
+      {meeting.agenda_items && meeting.agenda_items.length > 0 ? (
+        <ol className="mt-3 max-w-prose space-y-2 text-sm leading-snug text-ink-30">
+          {/* Ordinals reset to 1 inside each sub-section of a committee meeting
+              (e.g. the 26-item Comisia juridică record on 2026/II/13c carries
+              ordinals 1–5, then 1–19, then 1, then 1), so a per-meeting
+              `ordinal`-based key produces collisions. The array index is the
+              only stable sibling-unique key for this list. */}
+          {meeting.agenda_items.map((item, idx) => {
+            const outcome = agendaOutcomeLabel(item.outcome);
+            return (
+              <li key={`${meeting.record_id}-agenda-${idx}`} className="flex items-baseline gap-3">
+                <span
+                  className="font-mono-meta w-6 shrink-0 text-xs text-ink-45"
+                  data-tabular-nums=""
+                  aria-hidden="true"
+                >
+                  {String(item.ordinal).padStart(2, "0")}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-ink-16">{item.title}</span>
+                  {outcome ? <span className="ml-2 label-mono text-ink-45">{outcome}</span> : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+      {outcomes.length > 0 ? (
+        <p className="mt-3 flex flex-wrap gap-x-3 gap-y-1 font-mono-meta text-xs text-ink-45">
+          {outcomes.map((o) => (
+            <span key={o.label} data-tabular-nums="">
+              {o.label}: {formatCount(o.count)}
+            </span>
+          ))}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+// Outcome rollup for a committee meeting. Same shape as the per-row helper on
+// `/comisii/[committee_id]`; duplicated locally to keep the document page
+// self-contained and avoid a one-shot extraction.
+function aggregateMeetingOutcomes(
+  meeting: MoCommitteeMeeting,
+): Array<{ label: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const item of meeting.agenda_items ?? []) {
+    const label = agendaOutcomeLabel(item.outcome);
+    if (!label) continue;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function EmptyAgenda() {
   return (
     <div className="border border-border bg-paper-96 px-6 py-10">
       <p className="text-sm text-ink-30">
@@ -516,18 +625,6 @@ function EmptyAgenda({ doc }: { doc: MoDocument }) {
         cazul pentru sintezele comisiilor și rapoartele instituționale, unde conținutul este
         organizat la nivel de ședință sau secțiune.
       </p>
-      {doc.committee_count > 0 ? (
-        <p className="mt-3 text-sm text-ink-30">
-          Documentul conține{" "}
-          {pluralRo(
-            doc.committee_count,
-            "ședință de comisie",
-            "ședințe de comisie",
-            "de ședințe de comisie",
-          )}{" "}
-          — vor putea fi navigate într-o etapă următoare.
-        </p>
-      ) : null}
     </div>
   );
 }

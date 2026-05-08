@@ -190,6 +190,10 @@ export interface MoCommitteeMeeting extends CommonFields {
   meeting_date: string | null;
   format: string | null;
   purpose: string | null;
+  // Per the per-doc child grain convention (see docs/architecture.md). Used
+  // by `listDocumentChildren` to interleave meetings with the rest of the
+  // document body in source order, and by the document-page anchor.
+  position_in_document?: number | null;
   agenda_items: Array<{
     ordinal: number;
     title: string;
@@ -393,4 +397,67 @@ export interface SessionsIndexPayload {
   // Sum of `yearlyCounts` — the archive-wide session total surfaced in the
   // page header.
   archiveSessionTotal: number;
+}
+
+// Same shape as the other registries; aliased so call sites read clearly.
+// Counts the number of meetings per calendar year across `mo-committee-meetings`.
+export interface CommitteeYearCount {
+  year: number;
+  count: number;
+}
+
+export interface CommitteeRankRow {
+  committeeId: string;
+  // Most-recent meeting carries the freshest spelling of the committee name —
+  // upstream renames are propagated forward, so the latest meeting is the
+  // canonical source. Falls back to `committeeId` when the index is empty.
+  name: string;
+  kind: string | null;
+  // `joint_with[]` from the most recent meeting. Most committees never join;
+  // `null` keeps the row terse when there's nothing to render.
+  jointWith: string[] | null;
+  meetingCount: number;
+  firstMeetingDate: string | null;
+  lastMeetingDate: string | null;
+}
+
+export interface CommitteesIndexPayload {
+  // Per-year meeting totals across the whole archive. Sparse, sorted asc.
+  yearlyCounts: CommitteeYearCount[];
+  // Top committees by meeting count for the selected year, descending. Capped
+  // at 100 — the long tail is reachable via committee-id deep links.
+  topCommittees: CommitteeRankRow[];
+  // Calendar year currently filtered. Defaults to the most recent active year.
+  selectedYear: number | null;
+  // Distinct committees ever seen in `mo-committee-meetings`, regardless of
+  // year. Surfaces in the dateline / footnote.
+  totalCommittees: number;
+  // Distinct committees with ≥1 meeting in the selected year.
+  committeesInScope: number;
+  // Total meetings in the selected year — sum of `meetingCount` across the
+  // top-N rows is bounded by `committeesInScope`, but the full total can be
+  // larger when the rank is truncated.
+  meetingsInScope: number;
+}
+
+export interface CommitteePagePayload {
+  committeeId: string;
+  // Header values are derived from the most-recent meeting since there's no
+  // upstream `mo-committees` index. Re-aggregated on every cache miss.
+  name: string;
+  kind: string | null;
+  jointWith: string[] | null;
+  firstMeetingDate: string | null;
+  lastMeetingDate: string | null;
+  totalMeetings: number;
+  // Per-year meeting counts for this committee. Drives the year sparkbar.
+  yearlyCounts: CommitteeYearCount[];
+  selectedYear: number | null;
+  // Meeting list for `selectedYear`, sorted by meeting_date desc. Capped at
+  // 50 to match the layer-wide `MAX_PAGE_SIZE` — committees with denser
+  // schedules need an explicit pagination scheme that hasn't shipped yet.
+  meetings: MoCommitteeMeeting[];
+  // Total meeting count in `selectedYear` (track_total_hits). Equal to
+  // `meetings.length` until the cap kicks in.
+  meetingsInYear: number;
 }

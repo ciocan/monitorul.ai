@@ -89,35 +89,25 @@ export default async function Home() {
 
       <section aria-labelledby="metodologie" className="mt-16 border-t border-border pt-10">
         <h2 id="metodologie" className="label-mono text-ink-30">
-          Metodologie pe scurt
+          Pe scurt
         </h2>
         <div className="mt-4 grid max-w-prose gap-4 text-base leading-relaxed text-ink-30">
           <p>
-            Monitorul.ai citește un index Elasticsearch construit din PDF-urile publice ale
-            Monitorului Oficial. Conversia, extragerea structurată și indexarea sunt realizate de
-            pipeline-ul deschis{" "}
-            <a
-              href="https://github.com/ciocan/monitorul-ii"
-              className="underline underline-offset-4 hover:text-ink-16"
-              rel="noreferrer"
-            >
-              monitorul-ii
-            </a>
-            . Fiecare înregistrare are un identificator stabil care nu se schimbă între reextrageri,
-            astfel încât citările publicate aici rămân valabile.
-          </p>
-          <p>
-            Acest sit nu este o sursă oficială. Pentru documentul de drept consultați{" "}
-            <a
-              href="https://monitoruloficial.ro"
-              className="underline underline-offset-4 hover:text-ink-16"
-              rel="noreferrer"
-            >
-              monitoruloficial.ro
-            </a>
-            .
+            monitorul.ai este o arhivă publică și independentă a stenogramelor Parlamentului. Pornim
+            de la PDF-urile oficiale — Monitorul Oficial, Partea a II-a — și le transformăm în
+            pagini pe care le puteți citi, căuta și cita: discursuri, voturi, întrebări, ședințe de
+            comisie. Linkurile pe care le salvați astăzi vor deschide aceleași pagini și peste cinci
+            ani.
           </p>
         </div>
+        <p className="mt-6">
+          <Link
+            href="/despre"
+            className="label-mono text-ink-30 underline underline-offset-4 hover:text-ink-16"
+          >
+            Citiți metodologia completă →
+          </Link>
+        </p>
       </section>
     </div>
   );
