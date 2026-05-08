@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 
 import { Dateline } from "@/components/dateline";
 import { DocumentStickyHeader } from "@/components/document-sticky-header";
+import { ScrollToHash } from "@/components/scroll-to-hash";
 import { env } from "@/env";
 import {
   agendaCategoryLabel,
@@ -112,6 +113,7 @@ export default async function DocumentPage({ params }: PageProps) {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
       <DocumentJsonLd doc={doc} />
+      <ScrollToHash />
 
       <DocumentStickyHeader
         type={documentTypeLabel(doc.document_type)}
