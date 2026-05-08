@@ -936,18 +936,34 @@ export async function committeePage(
 // ---------------------------------------------------------------------------
 // Speeches search: BM25 default, optional client-side RRF fusion with kNN.
 
+export type SpeechSort = "relevance" | "date-desc" | "date-asc";
+
 export interface SearchSpeechesParams {
   q?: string;
   speakerPersonId?: string;
   chamber?: Chamber;
+  // Multi-year filter — speeches from any year in the list. Maps to a `terms`
+  // filter on `mo-speeches.year` (keyword in the index, indexed alongside
+  // `session_date`). Mutually exclusive with `dateFrom`/`dateTo` at the page
+  // level — when both are set, years wins (matches the documented chip-first
+  // UX). Empty array is the same as "no year filter".
+  years?: number[];
   dateFrom?: string;
   dateTo?: string;
   refBills?: string[];
   topics?: string[];
+  // Raw `speaker.party_group_at_time` values (already de-slugged by the caller
+  // via `listPartyEnumeration`). Multiple raw values are OR'd because the same
+  // logical group may appear under several spellings in the corpus.
+  speakerPartyRaw?: string[];
   isSubstantive?: boolean;
   page?: number;
   pageSize?: number;
   rankFusion?: "rrf" | "bm25-only";
+  // Server-side sort. "relevance" leans on the BM25 / RRF score; the other two
+  // force a `session_date` sort regardless of `q`. When `q` is empty,
+  // "relevance" auto-resolves to "date-desc" inside the search functions.
+  sort?: SpeechSort;
 }
 
 function speechFilters(p: SearchSpeechesParams): QueryDslQueryContainer[] {
@@ -956,7 +972,11 @@ function speechFilters(p: SearchSpeechesParams): QueryDslQueryContainer[] {
   filters.push({ term: { is_substantive: isSubstantive } });
   if (p.speakerPersonId) filters.push({ term: { "speaker.person_id": p.speakerPersonId } });
   if (p.chamber) filters.push({ term: { chamber: p.chamber } });
-  if (p.dateFrom || p.dateTo) {
+  // Years take precedence over a custom range — chip selection is the
+  // documented common case and the URL contract rebuilds it from `?year=`.
+  if (p.years && p.years.length > 0) {
+    filters.push({ terms: { year: p.years } });
+  } else if (p.dateFrom || p.dateTo) {
     filters.push({
       range: {
         session_date: {
@@ -972,7 +992,26 @@ function speechFilters(p: SearchSpeechesParams): QueryDslQueryContainer[] {
   if (p.topics && p.topics.length > 0) {
     filters.push({ terms: { "enrichments.topics": p.topics } });
   }
+  if (p.speakerPartyRaw && p.speakerPartyRaw.length > 0) {
+    filters.push({ terms: { "speaker.party_group_at_time": p.speakerPartyRaw } });
+  }
   return filters;
+}
+
+// Resolves the requested sort to a concrete order. "relevance" with a non-empty
+// `q` means "let BM25/RRF score do it" (caller passes `undefined` to ES);
+// without `q` there's nothing to score against, so degrade to date-desc.
+function resolveSort(p: SearchSpeechesParams): SpeechSort {
+  const requested = p.sort ?? "relevance";
+  if (requested === "relevance" && !p.q?.trim()) return "date-desc";
+  return requested;
+}
+
+function dateSortClause(order: "asc" | "desc"): SearchRequest["sort"] {
+  return [
+    { session_date: { order, missing: "_last" } },
+    { position_in_document: { order: "asc", missing: "_last" } },
+  ];
 }
 
 // RRF tuning — kept in sync with Python `monitorul_ii.elasticsearch.queries`
@@ -1069,7 +1108,7 @@ async function bm25Leg(
         }
       : undefined,
     _source: { excludes: ["enrichments.embedding"] },
-    sort: p.q ? undefined : [{ session_date: { order: "desc" } }],
+    sort: bm25SortClause(p),
   });
   const highlights: Record<string, string> = {};
   for (const h of res.hits.hits) {
@@ -1083,6 +1122,15 @@ async function bm25Leg(
     tookMs: res.took ?? 0,
     highlights,
   };
+}
+
+// BM25 sort: undefined (ES default = score desc) for relevance with `q`,
+// explicit date sort otherwise. `resolveSort` already handles the "no q +
+// relevance" → date-desc fallback.
+function bm25SortClause(p: SearchSpeechesParams): SearchRequest["sort"] | undefined {
+  const sort = resolveSort(p);
+  if (sort === "relevance") return undefined;
+  return dateSortClause(sort === "date-asc" ? "asc" : "desc");
 }
 
 interface KnnLegResult {
@@ -1165,7 +1213,7 @@ async function bm25LegIds(
     track_total_hits: true,
     query: { bool: { must, filter: filters } },
     _source: false,
-    sort: p.q ? undefined : [{ session_date: { order: "desc" } }],
+    sort: bm25SortClause(p),
   });
   return {
     ids: res.hits.hits.flatMap((h) => (h._id ? [h._id] : [])),
@@ -1400,7 +1448,13 @@ export async function searchSpeeches(
   const page = params.page ?? 1;
   const pageSize = clampPageSize(params.pageSize);
   return timed("searchSpeeches", { ...params, pageSize, page }, async () => {
-    const useRrf = (params.rankFusion ?? "rrf") === "rrf" && Boolean(params.q?.trim());
+    // Explicit date sort bypasses RRF — fusing semantic rank with chronological
+    // order is incoherent (the kNN leg's "neighbours" don't mean anything once
+    // you're saying "give me oldest first"). BM25-only handles date sorts
+    // natively via `bm25SortClause`.
+    const sortIsDate = resolveSort(params) !== "relevance";
+    const useRrf =
+      (params.rankFusion ?? "rrf") === "rrf" && Boolean(params.q?.trim()) && !sortIsDate;
     const result = useRrf
       ? await searchSpeechesRrf(params, page, pageSize)
       : await searchSpeechesBm25(params, page, pageSize);
@@ -1443,25 +1497,151 @@ export async function searchSpeechesKnn(
 }
 
 // ---------------------------------------------------------------------------
+// Party-at-time enumeration: distinct values of `speaker.party_group_at_time`
+// across the corpus, sorted by speech count desc. Drives the `?party=`
+// dropdown on /cauta. Slugs are minted here so the URL contract stays in this
+// layer (callers de-slug back to raw values via `dePartySlugs`).
+
+export interface PartyEnumerationRow {
+  slug: string;
+  raw: string;
+  count: number;
+}
+
+const PARTY_ENUM_AGG_SIZE = 80;
+
+// `speaker.party_group_at_time` is free-text; values like
+// "Grupul parlamentar al PSD" are common alongside short forms ("PSD").
+// We don't merge them in v1 (canon work belongs upstream in monitorul-ii) —
+// the slug is just a URL-safe rendering of the raw value.
+function slugifyParty(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip combining diacritics
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+// In-process memo. `speaker.party_group_at_time` enumeration changes glacially
+// (new parties / spelling variants land via reindex). 1h TTL means at most one
+// `terms` agg per process per hour; on Fluid Compute the same instance handles
+// many requests, so this is effectively free across cache hits.
+const PARTY_ENUM_TTL_MS = 60 * 60 * 1000;
+let partyEnumCache: { rows: PartyEnumerationRow[]; expiresAt: number } | null = null;
+
+export async function listPartyEnumeration(): Promise<PartyEnumerationRow[]> {
+  const now = Date.now();
+  if (partyEnumCache && partyEnumCache.expiresAt > now) {
+    return partyEnumCache.rows;
+  }
+  return timed("listPartyEnumeration", {}, async () => {
+    const res = await esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: {
+        bool: {
+          filter: [
+            { term: { is_substantive: true } },
+            { exists: { field: "speaker.party_group_at_time" } },
+          ],
+        },
+      },
+      aggs: {
+        by_party: {
+          terms: {
+            field: "speaker.party_group_at_time",
+            size: PARTY_ENUM_AGG_SIZE,
+            order: { _count: "desc" },
+          },
+        },
+      },
+    });
+    const buckets =
+      (
+        res.aggregations as
+          | { by_party: { buckets: Array<{ key: string; doc_count: number }> } }
+          | undefined
+      )?.by_party.buckets ?? [];
+    // Slug collisions are possible (two raw values that fold to the same slug).
+    // Disambiguate by appending the bucket index — rare but keeps the URL key
+    // unique. The de-slug map preserves the raw → slug 1:1 mapping.
+    const seen = new Set<string>();
+    const rows: PartyEnumerationRow[] = [];
+    buckets.forEach((b, i) => {
+      let slug = slugifyParty(b.key);
+      if (!slug || seen.has(slug)) slug = `${slug || "p"}-${i + 1}`;
+      seen.add(slug);
+      rows.push({ slug, raw: b.key, count: b.doc_count });
+    });
+    partyEnumCache = { rows, expiresAt: now + PARTY_ENUM_TTL_MS };
+    return { result: rows, esTookMs: res.took ?? null, hitsTotal: rows.length };
+  });
+}
+
+// Resolve a list of slugs back to the raw `speaker.party_group_at_time` values
+// for the ES filter. Unknown slugs are dropped silently (a stale share-link
+// shouldn't 500 the page).
+export function dePartySlugs(slugs: string[], enumeration: PartyEnumerationRow[]): string[] {
+  if (slugs.length === 0) return [];
+  const map = new Map(enumeration.map((r) => [r.slug, r.raw]));
+  return slugs.flatMap((s) => {
+    const raw = map.get(s);
+    return raw ? [raw] : [];
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Persons
 
-export async function searchPersons(q: string, pageSize?: number): Promise<MoPerson[]> {
-  const size = clampPageSize(pageSize);
-  return timed("searchPersons", { q, size }, async () => {
+export interface SearchPersonsOptions {
+  pageSize?: number;
+  // When true, the last token in `q` is matched as a prefix — what an
+  // as-you-type autocomplete needs. The default `false` keeps the historical
+  // strict-AND behaviour for callers that want exact-token matches (e.g. SSR
+  // slug → name resolution, where the slug expands to a full name).
+  prefix?: boolean;
+}
+
+export async function searchPersons(
+  q: string,
+  pageSizeOrOptions?: number | SearchPersonsOptions,
+): Promise<MoPerson[]> {
+  const opts: SearchPersonsOptions =
+    typeof pageSizeOrOptions === "number"
+      ? { pageSize: pageSizeOrOptions }
+      : (pageSizeOrOptions ?? {});
+  const size = clampPageSize(opts.pageSize);
+  const prefix = opts.prefix ?? false;
+  return timed("searchPersons", { q, size, prefix }, async () => {
     if (!q.trim()) {
       return { result: [], esTookMs: null, hitsTotal: 0 };
     }
+    // `bool_prefix` tokenises `q` and requires every term but the last to be
+    // an exact match while the last is matched as a prefix — the right shape
+    // for "Ioh" → Iohannis. Diacritic-folded subfields ride along so
+    // `sosoaca` autocompletes to indexed `șoșoacă` for free.
+    const queryBlock = prefix
+      ? {
+          multi_match: {
+            query: q,
+            fields: ["canonical_name^2", "canonical_name.folded", "aliases"],
+            type: "bool_prefix" as const,
+          },
+        }
+      : {
+          multi_match: {
+            query: q,
+            fields: ["canonical_name^2", "canonical_name.folded", "aliases"],
+            operator: "and" as const,
+            type: "best_fields" as const,
+          },
+        };
     const res = await esClient().search<MoPerson>({
       index: ES_INDEX.persons,
       size,
-      query: {
-        multi_match: {
-          query: q,
-          fields: ["canonical_name^2", "canonical_name.folded", "aliases"],
-          operator: "and",
-          type: "best_fields",
-        },
-      },
+      query: queryBlock,
     });
     return {
       result: res.hits.hits.flatMap((h) => (h._source ? [h._source] : [])),
