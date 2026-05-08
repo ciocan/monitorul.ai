@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# impeccable live mode (keep config.json; ignore runtime/session state)
+.impeccable/live/server.json
+.impeccable/live/sessions/
+.impeccable/live/annotations/

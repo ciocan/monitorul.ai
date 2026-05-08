@@ -24,6 +24,8 @@ import type {
   PersonStats,
   PersonYearCount,
   SearchResult,
+  SessionYearCount,
+  SessionsIndexPayload,
 } from "./types";
 
 // Hard server-side guardrails. The layer is the only path from app → ES; these
@@ -317,6 +319,95 @@ export async function listCommitteeMeetings(
       result: res.hits.hits.flatMap((h) => (h._source ? [h._source] : [])),
       esTookMs: res.took ?? null,
       hitsTotal: totalOf(res.hits.total),
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sessions index (`/mo`): per-year totals plus the document list for one year.
+// Largest year in the archive (~280 docs) fits comfortably under 500, so the
+// list query reads the whole year in a single hit rather than paginating.
+
+// Years in the archive run 2000–present. The legacy parse failure at year=0
+// is filtered out everywhere so it can't surface as an empty "Anul 0" column.
+const SESSION_YEAR_MIN = 1990;
+const SESSION_YEAR_MAX = 2100;
+const SESSION_LIST_SIZE = 500;
+
+async function fetchSessionYearCounts(): Promise<SessionYearCount[]> {
+  const res = await esClient().search({
+    index: ES_INDEX.documents,
+    size: 0,
+    aggs: {
+      by_year: {
+        terms: {
+          field: "year",
+          size: 100,
+          order: { _key: "asc" },
+          min_doc_count: 1,
+        },
+      },
+    },
+  });
+  const buckets =
+    (
+      res.aggregations as
+        | { by_year: { buckets: Array<{ key: number; doc_count: number }> } }
+        | undefined
+    )?.by_year.buckets ?? [];
+  return buckets
+    .map((b) => ({ year: b.key, count: b.doc_count }))
+    .filter((b) => b.year >= SESSION_YEAR_MIN && b.year <= SESSION_YEAR_MAX);
+}
+
+async function fetchSessionsForYear(year: number): Promise<MoDocument[]> {
+  const res = await esClient().search<MoDocument>({
+    index: ES_INDEX.documents,
+    size: SESSION_LIST_SIZE,
+    track_total_hits: true,
+    query: { bool: { filter: [{ term: { year } }] } },
+    // session_date is the editorial sort key (when the sitting happened).
+    // published is the tie-breaker for the rare cases where multiple issues
+    // share a date; issue is the final fallback for documents missing dates
+    // entirely (older archive years occasionally do).
+    sort: [
+      { session_date: { order: "desc", missing: "_last" } },
+      { published: { order: "desc", missing: "_last" } },
+      { issue: { order: "desc" } },
+    ],
+  });
+  return res.hits.hits.flatMap((h) => (h._source ? [h._source] : []));
+}
+
+export async function sessionsIndex(opts: { year?: number } = {}): Promise<SessionsIndexPayload> {
+  return timed("sessionsIndex", opts, async () => {
+    const requestedYear =
+      opts.year && opts.year >= SESSION_YEAR_MIN && opts.year <= SESSION_YEAR_MAX
+        ? opts.year
+        : null;
+    // When a year is provided we can fan out — counts for the sparkbar and
+    // sessions for the list don't depend on each other. Without a year we
+    // fetch counts first to derive the default selection.
+    let yearlyCounts: SessionYearCount[];
+    let sessions: MoDocument[];
+    if (requestedYear !== null) {
+      const [counts, list] = await Promise.all([
+        fetchSessionYearCounts(),
+        fetchSessionsForYear(requestedYear),
+      ]);
+      yearlyCounts = counts;
+      sessions = list;
+    } else {
+      yearlyCounts = await fetchSessionYearCounts();
+      const fallbackYear = yearlyCounts.at(-1)?.year ?? null;
+      sessions = fallbackYear ? await fetchSessionsForYear(fallbackYear) : [];
+    }
+    const selectedYear = requestedYear ?? yearlyCounts.at(-1)?.year ?? null;
+    const archiveSessionTotal = yearlyCounts.reduce((sum, c) => sum + c.count, 0);
+    return {
+      result: { yearlyCounts, sessions, selectedYear, archiveSessionTotal },
+      esTookMs: null,
+      hitsTotal: sessions.length,
     };
   });
 }

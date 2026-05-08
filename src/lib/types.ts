@@ -318,3 +318,24 @@ export interface PersonPagePayload {
   // Used to label the speeches section ("X discursuri") when filtered.
   filteredSpeechTotal: number;
 }
+
+export interface SessionYearCount {
+  year: number;
+  count: number;
+}
+
+export interface SessionsIndexPayload {
+  // Per-year session totals across the entire archive. Sparse (skips year=0
+  // legacy parse failures) and sorted ascending. Drives the year sparkbar.
+  yearlyCounts: SessionYearCount[];
+  // Documents for `selectedYear`, sorted by session_date desc with issue desc
+  // as a tiebreaker. Empty array when the archive has no sessions for the
+  // requested year (e.g. `?year=1850`).
+  sessions: MoDocument[];
+  // The calendar year currently listed. Defaults to the most recent year with
+  // at least one session when no `?year=` is passed.
+  selectedYear: number | null;
+  // Sum of `yearlyCounts` — the archive-wide session total surfaced in the
+  // page header.
+  archiveSessionTotal: number;
+}
