@@ -375,3 +375,20 @@ The Python indexer (`monitorul-ii index`) calls a webhook on every successful up
 ## Credentials
 
 Two API keys are minted by `monitorul-ii es-init`. **This app uses only `monitorul_reader`** — read-only on `mo-*`, no scripting, no scroll, no `_sql`, no cluster info. The `monitorul_indexer` key never leaves the Python pipeline.
+
+## MCP server
+
+A public, anonymous Model Context Protocol server is mounted on the same Next.js app, with two URLs:
+
+- **`/mcp`** — human-facing presentation page (`src/app/mcp/page.tsx`). Editorial-archival aesthetic; copy in Romanian; lists the 16 tools, sample queries, and copy-pasteable client configs (Claude Desktop, Cursor, Codex). ISR 1h, JSON-LD `WebAPI`.
+- **`/mcp/server`** — streamable-HTTP endpoint that AI clients connect to. Lives at `src/app/mcp/server/route.ts`; the handler passes `streamableHttpEndpoint: "/mcp/server"` to `mcp-handler` so the dispatcher's pathname-comparison agrees with the file location. No rewrite — `mcp-handler` reads `req.url` (which preserves the source path under a rewrite), so attempting to rewrite from a clean URL silently breaks the dispatch.
+
+The handler registers 16 Zod-typed tools — every tool is a thin wrapper over a function in `src/lib/search.ts`, so there's no protocol drift between the web pages and the MCP. The full design contract (build phases, tool inventory, hit shape, rate-limit tiers, deferred V2 features) lives in [`docs/mcp.md`](./mcp.md).
+
+Notable shape decisions:
+
+- **Cataloguer-mode hit shape** ([`src/lib/mcp-adapters.ts`](../src/lib/mcp-adapters.ts)) — search-shape tools (`search_speeches`, `search_persons`) trim each hit to `{ record_id, url_path, absolute_url, speaker, date, chamber, agenda_title, excerpt (240ch), refs }`. Bodies stay behind `get_speech(record_id)` so multi-step LLM calls fit the context window.
+- **Streamable HTTP only** — SSE is disabled (`disableSse: true`). Modern MCP clients (Claude Desktop, Cursor, Cline, claude.ai) negotiate streamable HTTP first; legacy SSE would require a Redis session-state side-channel for no benefit.
+- **Live chamber enumeration** — `describe_corpus` aggregates distinct `chamber` values from `mo-speeches` rather than returning the `Chamber` TS union. The corpus stores `"Senatul"` (with definite article) but the type says `"Senat"`; surfacing live values is the only way the LLM gets a filter that round-trips non-zero.
+- **Rate limits** ([`src/lib/ratelimit.ts`](../src/lib/ratelimit.ts)) — Upstash sliding window: 30/min/IP general, 6/min/IP for `search_speeches` with `rank_fusion ∈ {rrf, knn-only}` (the modes that hit the embed service). The wrapper sniffs the JSON-RPC body to identify heavy calls without disturbing the downstream handler. No-op when Upstash creds aren't set (dev only — production sets both).
+- **Auth: anonymous V1** — per the design doc decision matrix. OAuth-gated tier with per-key buckets is V2, hooked through `mcp-handler`'s `withMcpAuth` helper when ready.

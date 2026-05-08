@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 
+import { requestContext } from "@/lib/request-context";
 import { searchPersons } from "@/lib/search";
 
 // Speaker autocomplete on /cauta. Wraps `searchPersons()` (which already does
@@ -23,7 +24,11 @@ export async function GET(req: NextRequest) {
   const limitRaw = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit =
     Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, MAX_LIMIT) : MAX_LIMIT;
-  const persons = await searchPersons(q, { pageSize: limit, prefix: true });
+  // Stamp `surface: "api"` so query-log analytics can split combobox traffic
+  // from the web pages (`web`) and the MCP (`mcp`).
+  const persons = await requestContext.run({ surface: "api" }, () =>
+    searchPersons(q, { pageSize: limit, prefix: true }),
+  );
   // Trim the payload — the combobox only renders name + slug.
   const hits = persons.map((p) => ({
     id: p.id,

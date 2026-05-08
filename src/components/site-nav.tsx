@@ -17,6 +17,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/politicieni", label: "Politicieni" },
   { href: "/comisii", label: "Comisii" },
   { href: "/despre", label: "Despre" },
+  // Bracketed mono — the brackets are the affordance. Print-masthead idiom
+  // (a service tag set off from the section list typographically, not by
+  // colour). Active state behaves like every other item (azure underline)
+  // so the bracket framing and the active cue don't compete.
+  { href: "/mcp", label: "[MCP]" },
 ];
 
 const ACTIVE_UNDERLINE = { boxShadow: "inset 0 -2px 0 var(--color-azure-3)" } as const;

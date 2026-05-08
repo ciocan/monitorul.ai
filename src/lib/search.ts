@@ -6,6 +6,7 @@ import { env } from "@/env";
 
 import { embedQuery } from "./embed";
 import { ES_INDEX, QUERY_LOG_INDEX, esClient } from "./es-client";
+import { type RequestSurface, requestContext } from "./request-context";
 import type {
   Chamber,
   CommitteePagePayload,
@@ -66,6 +67,16 @@ interface QueryLogEntry {
   // pages / zero-BM25 hits; logging the served mode shows the degrade rate.
   // Null for ops that don't have a hybrid path.
   mode: ServedMode | null;
+  // Which entry point fired this call. Set via `requestContext` by the route
+  // handler that owns the surface (the MCP route stamps `"mcp"`, the
+  // autocomplete route stamps `"api"`, RSC pages stamp `"web"`). Defaults to
+  // `"web"` when no context is set so older log rows remain comparable
+  // shape-wise. Lets analytics split traffic per surface without joining.
+  surface: RequestSurface;
+  // For `surface === "mcp"`, the LLM-facing tool name (`search_speeches`,
+  // `describe_corpus`, …). The `op` field carries the lib function name; this
+  // carries the public tool name. Null for non-MCP surfaces.
+  tool: string | null;
   took_ms: number;
   es_took_ms: number | null;
   hits_total: number | null;
@@ -103,8 +114,10 @@ function totalOf(hitsTotal: unknown): number {
 function logQuery(entry: QueryLogEntry): void {
   if (env.NODE_ENV !== "production") {
     const tag = entry.error ? "ERR" : "OK";
+    const surfaceTag = entry.surface === "web" ? "" : ` ${entry.surface}`;
+    const toolTag = entry.tool ? `[${entry.tool}]` : "";
     console.log(
-      `[search:${tag}] ${entry.op} took=${entry.took_ms}ms es=${entry.es_took_ms ?? "?"}ms hits=${entry.hits_total ?? "?"}`,
+      `[search:${tag}${surfaceTag}]${toolTag} ${entry.op} took=${entry.took_ms}ms es=${entry.es_took_ms ?? "?"}ms hits=${entry.hits_total ?? "?"}`,
     );
   }
   if (!env.QUERY_LOG_WRITE) return;
@@ -142,11 +155,17 @@ async function timed<T>(
   } finally {
     const rawQ = typeof args.q === "string" ? args.q.trim() : "";
     const argsPage = typeof args.page === "number" ? args.page : null;
+    const ctx = requestContext.getStore();
     logQuery({
       op,
       q: rawQ.length > 0 ? rawQ : null,
       page: argsPage,
       mode,
+      // Surface defaults to `web` so RSC pages and any other unannotated
+      // caller end up in the right bucket for analytics. The MCP and API
+      // route handlers stamp the context explicitly.
+      surface: ctx?.surface ?? "web",
+      tool: ctx?.tool ?? null,
       took_ms: Math.round(performance.now() - start),
       es_took_ms: esTookMs,
       hits_total: hitsTotal,

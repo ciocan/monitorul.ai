@@ -3,11 +3,11 @@ import type { NextConfig } from "next";
 
 // Validate env at config-load time so `next dev` / `next build` fail fast on
 // missing or malformed vars rather than at the first request.
-import "./src/env";
+import { env } from "./src/env";
 
 const nextConfig: NextConfig = {
   pageExtensions: ["ts", "tsx", "md", "mdx"],
-  allowedDevOrigins: ["192.168.1.177"],
+  allowedDevOrigins: env.ALLOWED_DEV_ORIGINS,
 };
 
 const withMDX = createMDX({});

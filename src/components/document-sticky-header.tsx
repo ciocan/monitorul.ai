@@ -52,7 +52,11 @@ export function DocumentStickyHeader({
     <div
       aria-hidden={!visible}
       className={cn(
-        "fixed inset-x-0 top-0 z-30 border-b-2 border-paper-91 bg-paper-96 transition-transform duration-200 ease-out motion-reduce:transition-none",
+        // z-40 sits above the now-sticky `<SiteHeader>` (z-30) so the
+        // document context replaces the site register cleanly when the user
+        // has scrolled past the opener. Mobile nav full-screen overlay
+        // (z-50) still wins over both.
+        "fixed inset-x-0 top-0 z-40 border-b-2 border-paper-91 bg-paper-96 transition-transform duration-200 ease-out motion-reduce:transition-none",
         visible ? "translate-y-0" : "-translate-y-full",
       )}
     >

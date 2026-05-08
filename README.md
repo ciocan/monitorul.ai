@@ -46,6 +46,11 @@ S3_SECRET_ACCESS_KEY=
 S3_BUCKET=monitorul-ii
 S3_REGION=auto
 
+# Upstash Redis — sliding-window rate limit for the public MCP server.
+# Without these, the limiter no-ops (dev only — set both in production).
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
 NEXT_PUBLIC_SITE_URL=https://monitorul.ai
 ```
 
@@ -70,6 +75,42 @@ Validated at startup by [`src/env.ts`](./src/env.ts) (via `@t3-oss/env-nextjs` +
 | agenda/speech/vote/etc.         | not yet wired | linked from chrome but ship in subsequent phases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 All ES interaction goes through [`src/lib/search.ts`](./src/lib/search.ts) — the only path from app code to Elasticsearch.
+
+## Connecting via MCP
+
+A public, anonymous Model Context Protocol server is mounted on the same Next.js app:
+
+| URL                               | Purpose                                                             |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `https://monitorul.ai/mcp`        | Presentation page — what it is, how to plug it into AI clients      |
+| `https://monitorul.ai/mcp/server` | Streamable-HTTP endpoint — paste this into your client's MCP config |
+
+It exposes 16 Zod-typed tools that wrap the same `lib/search.ts` functions the web pages use, so any MCP-capable client (Claude Desktop, Cursor, Codex, claude.ai) can ask multi-step questions over the corpus and get back hits pinned to one-click-verifiable URLs on this site.
+
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "monitorul-ai": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://monitorul.ai/mcp/server"]
+    }
+  }
+}
+```
+
+**Cursor / Cline** — point the client's MCP config at `https://monitorul.ai/mcp/server` directly (both speak streamable HTTP natively).
+
+**Codex CLI** — same `mcp-remote` shape as Claude Desktop, in `~/.codex/config.toml`.
+
+**Local dev** — same shape, swap the URL: `http://localhost:3020/mcp/server` (with `--allow-http` for `mcp-remote`).
+
+A typical session starts with `describe_corpus` (chambers, topics, counts, URL templates) and chains downstream — e.g. `search_persons` → `person_page` → `search_speeches(speaker_person_id=...)` → `get_speech` for verbatim quotes. The full tool surface is documented in [`docs/mcp.md`](./docs/mcp.md), and the user-facing presentation lives at [`/mcp`](./src/app/mcp/page.tsx).
+
+Internally the route file is at `src/app/mcp/server/route.ts`. The handler tells `mcp-handler` to dispatch on the literal pathname `/mcp/server` (`streamableHttpEndpoint` config), so the public URL and the file location agree — no rewrites involved.
+
+Rate limit: 30 req/min/IP general, 6 req/min/IP for RRF / kNN-only `search_speeches`. Without `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` set, the limiter no-ops (dev only — production must configure both).
 
 ## Releases
 

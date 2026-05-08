@@ -43,6 +43,24 @@ export const env = createEnv({
     S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     S3_BUCKET: z.string().min(1).optional(),
     S3_REGION: z.string().default("auto"),
+    // Upstash Redis for MCP rate limiting (Phase 8). Both vars are optional so
+    // the MCP route can run unrate-limited in dev without external services;
+    // when one is present the other must also be present (validated below).
+    UPSTASH_REDIS_REST_URL: z.url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+    // Comma-separated host(s) allowed by `next dev` for cross-origin asset
+    // requests (LAN IPs, ngrok, etc.). Dev-only; ignored by `next build`.
+    ALLOWED_DEV_ORIGINS: z
+      .string()
+      .optional()
+      .transform((v) =>
+        v
+          ? v
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
+      ),
   },
   client: {
     NEXT_PUBLIC_SITE_URL: z.url().default("https://monitorul.ai"),
