@@ -69,6 +69,19 @@ export function MethodologyBlock({
             politician cu 3 din 3 discursuri marcate nu sare automat în top — așteptăm mai multe
             date înainte să fie sigur.
           </p>
+          <p className="mt-3 max-w-prose">
+            <span className="label-mono mr-2 text-ink-16">
+              Despre clasamentul „fără cadre populiste sau anti-pluraliste”
+            </span>
+            Cele patru cadre sunt independente prin construcție — un discurs poate fi simultan
+            argumentat substanțial (DQI ≥ 2) și marcat populist (H ≥ 1) sau anti-pluralist (V ≥ 1).
+            Al patrulea clasament numără doar discursurile care îndeplinesc concomitent{" "}
+            <em>DQI ≥ 2</em>, <em>H = 0</em> și <em>V = 0</em> — argumentare cu evidență sau motive,
+            fără cadre populiste sau anti-pluraliste în aceeași intervenție. Filtrul rămâne la nivel
+            de speech-act, nu de persoană: un politician poate apărea aici pentru o parte din
+            discursurile sale și în Top H ≥ 1 pentru alte intervenții ale aceluiași an. Codarea
+            rămâne descriere de discurs, nu atribuire de trăsături personale.
+          </p>
         </>
       )}
       <p className="mt-3 max-w-prose">

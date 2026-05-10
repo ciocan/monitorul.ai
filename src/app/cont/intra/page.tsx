@@ -64,8 +64,11 @@ export default async function ContIntraPage({ searchParams }: PageProps) {
         <p className="mt-4 text-sm leading-relaxed text-ink-45">
           Singurul provider acceptat în prima versiune. Dacă ai nevoie de altă metodă (cont
           instituțional, parolă etc.), trimite-ne un mesaj la{" "}
-          <a href="mailto:radu@sicap.ai" className="underline underline-offset-4 hover:text-ink-16">
-            radu@sicap.ai
+          <a
+            href="mailto:radu@monitorul.ai"
+            className="underline underline-offset-4 hover:text-ink-16"
+          >
+            radu@monitorul.ai
           </a>
           .
         </p>

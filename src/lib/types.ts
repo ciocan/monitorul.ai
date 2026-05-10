@@ -570,8 +570,13 @@ export interface DiscourseTopPolitician {
   ciHigh: number;
 }
 
+// `dqi-clean` is the orthogonal view: DQI ≥ L2 AND Hawkins.score = 0 AND
+// V-Party.score = 0. Frameworks are independent by methodology (schema Q2),
+// so a populist speech can also score high on DQI; this panel surfaces the
+// subset that does NOT carry populist or anti-pluralist framing in the same
+// turn.
 export interface DiscourseTopPoliticiansPayload {
-  axis: "hawkins" | "vparty" | "dqi";
+  axis: "hawkins" | "vparty" | "dqi" | "dqi-clean";
   year: number | null;
   rows: DiscourseTopPolitician[];
 }

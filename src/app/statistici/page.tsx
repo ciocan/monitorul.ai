@@ -80,14 +80,19 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
     confidenceMin: discourseParams.confidenceMin,
   };
 
-  const [timeSeries, crosstab, hPolitics, vPolitics, dqiPolitics, treemap] = await Promise.all([
-    discourseTimeSeries(filters),
-    discourseHvCrosstab(filters),
-    topPoliticiansByDiscourseRate({ ...filters, axis: "hawkins", size: 20 }),
-    topPoliticiansByDiscourseRate({ ...filters, axis: "vparty", size: 20 }),
-    topPoliticiansByDiscourseRate({ ...filters, axis: "dqi", size: 20 }),
-    discourseMarkerTreemap(filters),
-  ]);
+  const [timeSeries, crosstab, hPolitics, vPolitics, dqiPolitics, dqiCleanPolitics, treemap] =
+    await Promise.all([
+      discourseTimeSeries(filters),
+      discourseHvCrosstab(filters),
+      topPoliticiansByDiscourseRate({ ...filters, axis: "hawkins", size: 20 }),
+      topPoliticiansByDiscourseRate({ ...filters, axis: "vparty", size: 20 }),
+      topPoliticiansByDiscourseRate({ ...filters, axis: "dqi", size: 20 }),
+      // Orthogonal view — DQI ≥ L2 AND Hawkins.score = 0 AND V-Party.score = 0.
+      // Methodology Q2 forbids personality attribution; this panel keeps the
+      // gate at the speech-act level, not at the speaker level.
+      topPoliticiansByDiscourseRate({ ...filters, axis: "dqi-clean", size: 20 }),
+      discourseMarkerTreemap(filters),
+    ]);
 
   // Build a stable URLSearchParams clone for the chip toggles. We only carry
   // the params the user explicitly set; defaults stay implicit.
@@ -144,6 +149,7 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
           <MiniRankingTable data={hPolitics} />
           <MiniRankingTable data={vPolitics} />
           <MiniRankingTable data={dqiPolitics} />
+          <MiniRankingTable data={dqiCleanPolitics} />
         </div>
       </section>
 

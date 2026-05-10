@@ -1,0 +1,85 @@
+## Operatorul site-ului
+
+monitorul.ai este operat de **42 Tech Limited**, o societate cu răspundere limitată înregistrată în Marea Britanie cu numărul **11291639**, cu sediul social la **Unit 10 80 Lytham Road, Fulwood, Preston, United Kingdom, PR2 3AQ**. Acești termeni guvernează utilizarea site-ului public, a serverului MCP și a paginii de contribuții. Pentru contact: **radu@monitorul.ai**.
+
+## Conținut public, fără garanție
+
+Conținutul site-ului — stenograme, voturi, interpelări, profiluri de politicieni, rapoarte, sinteze de comisii — este reprodus din documentele oficiale ale **Monitorului Oficial al României, Partea a II-a**. Aceste documente sunt acte publice. monitorul.ai este un strat de citare și descoperire peste ele; **nu este sursă oficială**.
+
+Pentru actele cu efect juridic, sursa autoritativă rămâne [monitoruloficial.ro](https://monitoruloficial.ro). Operatorul nu garantează caracterul complet sau lipsit de erori al reproducerii — pipeline-ul de import este descris la [/despre](/despre), iar erorile pot fi semnalate la [/despre#corectii](/despre#corectii).
+
+Site-ul este oferit „as is”, fără garanții implicite sau exprese. Operatorul nu răspunde pentru pierderi, daune indirecte sau decizii bazate pe conținutul reprodus aici care diverge de actul oficial.
+
+## Contribuții (`/sustine`)
+
+Contribuțiile către operator sunt **plăți operaționale**, nu donații în sens fiscal. Operatorul este o societate comercială pentru profit, nu o organizație non-profit. Contribuțiile **nu sunt deductibile fiscal** în România, în UE sau în Marea Britanie. Termenul „donație” nu apare în comunicarea operatorului tocmai pentru a evita confuzia.
+
+### Ce primești în schimb
+
+Nimic personalizat. Contribuțiile finanțează costurile de operare publice: găzduire, servicii cloud, codificare LLM și extinderea acoperirii. Beneficiile colective (acoperire mai mare, codificare mai detaliată) sunt vizibile pentru toți utilizatorii. Susținătorii care utilizează intens serverul MCP pot primi limite ridicate manual, prin email — nu există un sistem automat de tarife.
+
+### Plăți recurente și unice
+
+- **Recurente (lunare):** procesate prin Stripe ca abonamente. Poți gestiona, modifica sau anula abonamentul oricând prin link-ul „Manage subscription” din e-mailul de chitanță Stripe sau din portalul de client Stripe. Anularea are efect imediat — nu se mai face nicio debitare după anulare; suma deja debitată pentru perioada curentă nu se restituie.
+- **Unice:** procesate prin Stripe ca plăți individuale. Sunt finale.
+- **Transfer bancar:** prin IBAN-ul publicat pe `/sustine`. Sunt finale.
+
+### Politica de restituire
+
+Contribuțiile sunt **finale și nerestituibile**, cu excepția:
+
+- **fraudei** (carte folosită fără autorizare): restituire la cerere către emitent, după verificare;
+- **dublei procesări** (debitare multiplă pentru aceeași intenție): restituire automată a sumei suplimentare;
+- **erorii operatorului** (de exemplu prelucrare a unei contribuții refuzate, vezi mai jos): restituire integrală.
+
+Cererile de restituire se trimit la **radu@monitorul.ai** cu codul tranzacției Stripe. Termen de răspuns: 14 zile lucrătoare.
+
+### Politica de refuz
+
+Operatorul nu acceptă contribuții de la: **partide politice · instituții de stat · campanii electorale · firme de lobby cu clienți politici · organizații media cu mize editoriale partizane**. O contribuție identificată ca încadrându-se în aceste categorii — fie la momentul primirii, fie ulterior — este restituită integral. Operatorul își rezervă dreptul de a refuza și alte contribuții care, în opinia sa, ar putea compromite independența arhivei.
+
+Contribuțiile care depășesc cumulat 1.000 EUR/an de la o singură sursă presupun o declarație simplă de afiliere transmisă prin email înainte de procesare. Fără această declarație, contribuția este restituită.
+
+Numărul și natura contribuțiilor refuzate sunt publicate trimestrial în raportul de la `/sustine`.
+
+## Serverul MCP
+
+Serverul MCP de la `/mcp/server` este accesibil oricărui utilizator autentificat cu un cont Google, prin protocolul OAuth standard. Utilizarea trebuie să fie:
+
+- **non-comercială sau cu atribuire publică** — utilizarea în produse comerciale care nu menționează sursa nu este interzisă, dar este descurajată;
+- **non-abuzivă** — limitele de rată (30 cereri/min generale, 20 cereri/min pentru interogări semantice grele) sunt aplicate per IP și per utilizator. Eludarea sistematică a limitelor (rotarea IP-urilor, conturi multiple etc.) atrage suspendarea contului;
+- **conformă cu scopul arhivei** — accesul la conținut public, citabil, pentru jurnalism, cercetare, analiză civică, sau utilizare educațională.
+
+Operatorul își rezervă dreptul de a suspenda sau limita accesul la serverul MCP pentru orice cont care încalcă acești termeni, fără preaviz în cazul abuzului flagrant.
+
+## Proprietate intelectuală
+
+- **Codul site-ului** (`monitorul.ai`) și **codul pipeline-ului de date** (`monitorul-ii`) sunt distribuite sub licență **GNU AGPL v3.0**. Vezi [github.com/ciocan/monitorul.ai/blob/main/LICENSE](https://github.com/ciocan/monitorul.ai/blob/main/LICENSE) și [github.com/ciocan/monitorul-ii/blob/main/LICENSE](https://github.com/ciocan/monitorul-ii/blob/main/LICENSE) pentru textul integral. AGPL impune că orice modificare a codului care este oferită ca serviciu de rețea trebuie să fie publicată sub aceeași licență.
+- **Conținutul Monitorului Oficial** (stenograme, voturi, rapoarte) este conținut public conform legislației române. Reproducerea pe acest site este în baza caracterului public al acestor documente.
+- **Datele derivate** (rezultatele codificării LLM, embeddings, rapoartele agregate) sunt distribuite sub licență **CC BY 4.0** când sunt publicate ca dump-uri separate.
+- **Mărcile** „monitorul.ai” și logo-ul aferent sunt ale operatorului. Utilizarea lor în alt context (cu excepția citării sau a referirii editoriale) necesită acord scris.
+
+## Răspundere
+
+Răspunderea operatorului față de orice utilizator pentru orice pretenție decurgând din utilizarea site-ului este limitată la **suma totală a contribuțiilor făcute de utilizatorul respectiv în ultimele 12 luni** sau **100 EUR**, oricare este mai mare. Această limitare nu se aplică în cazurile în care legea aplicabilă o interzice (de exemplu, vătămare corporală cauzată de neglijență gravă).
+
+Operatorul nu răspunde pentru:
+
+- conținutul stenogramelor reproduse — sunt acte publice; orice opinie exprimată în plenul Parlamentului aparține persoanei care a exprimat-o, nu operatorului;
+- decizii editoriale, juridice sau de business luate de utilizatori pe baza conținutului site-ului;
+- indisponibilitate temporară a serviciului din cauze tehnice, de mentenanță, sau de forță majoră;
+- conținut sau servicii ale terților (Stripe, Google, OpenAI, Anthropic, Cloudflare etc.) la care site-ul se conectează.
+
+## Modificări ale termenilor
+
+Operatorul poate modifica acești termeni oricând. Modificările sunt vizibile în istoricul Git al fișierului `src/app/termeni/content.mdx` din depozit. Versiunea curentă este datată în antet. Pentru abonamentele recurente active, modificările materiale sunt notificate prin email cu cel puțin 30 de zile în avans, iar abonatul poate anula înainte ca modificările să intre în vigoare.
+
+## Legea aplicabilă și jurisdicția
+
+Acești termeni sunt guvernați de **legea engleză și galeză**. Litigiile decurgând din utilizarea site-ului sunt de competența exclusivă a **tribunalelor din Anglia și Țara Galilor**, cu excepția cazurilor în care legislația aplicabilă consumatorilor (în special UE Regulation 1215/2012 — Bruxelles Ia) atribuie competență instanțelor de la domiciliul utilizatorului-consumator.
+
+## Contact
+
+Pentru orice întrebare despre acești termeni, restituiri, sau dispute: **radu@monitorul.ai**.
+
+Pentru sesizări care țin de conținutul stenogramelor: [/despre#corectii](/despre#corectii).

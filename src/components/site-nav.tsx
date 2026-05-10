@@ -54,7 +54,7 @@ const NAV_ENTRIES: NavEntry[] = [
   {
     kind: "group",
     label: "Despre",
-    matchHrefs: ["/despre"],
+    matchHrefs: ["/despre", "/sustine"],
     items: [
       { href: "/despre", label: "Despre arhivă", hint: "Pipeline, identitate, căutare" },
       {
@@ -62,6 +62,7 @@ const NAV_ENTRIES: NavEntry[] = [
         label: "Analiza discursului",
         hint: "Patru cadre + voce, metodologie",
       },
+      { href: "/sustine", label: "Sprijin", hint: "Costuri, contribuții, rapoarte trimestriale" },
     ],
   },
   // Bracketed mono — the brackets are the affordance. Print-masthead idiom

@@ -2585,26 +2585,54 @@ export async function discourseHvCrosstab(
 }
 
 export async function topPoliticiansByDiscourseRate(
-  opts: DiscourseStatsFilters & { axis: "hawkins" | "vparty" | "dqi"; size?: number },
+  opts: DiscourseStatsFilters & {
+    axis: "hawkins" | "vparty" | "dqi" | "dqi-clean";
+    size?: number;
+  },
 ): Promise<DiscourseTopPoliticiansPayload> {
   return timed("topPoliticiansByDiscourseRate", { ...opts }, async () => {
     const filters: QueryDslQueryContainer[] = buildSystemFilters(opts);
     filters.push({ exists: { field: "speaker.person_id" } });
     if (typeof opts.confidenceMin === "number") {
-      const path =
+      // `dqi-clean` reads all three frameworks at the speech level, so the
+      // confidence floor must clear on each of them — otherwise a low-confidence
+      // Hawkins=0 could leak in as a false "no populism" verdict.
+      const paths =
         opts.axis === "hawkins"
-          ? "enrichments.discourse.hawkins.framework_confidence"
+          ? ["enrichments.discourse.hawkins.framework_confidence"]
           : opts.axis === "vparty"
-            ? "enrichments.discourse.vparty.framework_confidence"
-            : "enrichments.discourse.dqi.framework_confidence";
-      filters.push({ range: { [path]: { gte: opts.confidenceMin } } });
+            ? ["enrichments.discourse.vparty.framework_confidence"]
+            : opts.axis === "dqi"
+              ? ["enrichments.discourse.dqi.framework_confidence"]
+              : [
+                  "enrichments.discourse.dqi.framework_confidence",
+                  "enrichments.discourse.hawkins.framework_confidence",
+                  "enrichments.discourse.vparty.framework_confidence",
+                ];
+      for (const path of paths) {
+        filters.push({ range: { [path]: { gte: opts.confidenceMin } } });
+      }
     }
     const ge1Filter: QueryDslQueryContainer =
       opts.axis === "dqi"
         ? { range: { "enrichments.discourse.dqi.level_of_justification": { gte: 2 } } }
-        : opts.axis === "hawkins"
-          ? { range: { "enrichments.discourse.hawkins.score": { gte: 1 } } }
-          : { range: { "enrichments.discourse.vparty.score": { gte: 1 } } };
+        : opts.axis === "dqi-clean"
+          ? {
+              // Orthogonal view: substantive justification AND no populist or
+              // anti-pluralist framing in the same speech-act. Strict gates
+              // (score = 0, not score < 2) — admitting H = 1 would dilute the
+              // exact thing the panel exists to surface.
+              bool: {
+                filter: [
+                  { range: { "enrichments.discourse.dqi.level_of_justification": { gte: 2 } } },
+                  { term: { "enrichments.discourse.hawkins.score": 0 } },
+                  { term: { "enrichments.discourse.vparty.score": 0 } },
+                ],
+              },
+            }
+          : opts.axis === "hawkins"
+            ? { range: { "enrichments.discourse.hawkins.score": { gte: 1 } } }
+            : { range: { "enrichments.discourse.vparty.score": { gte: 1 } } };
     const size = Math.min(50, Math.max(5, opts.size ?? 15));
     const res = await esClient().search({
       index: ES_INDEX.speeches,

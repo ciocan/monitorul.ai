@@ -78,6 +78,11 @@ export function SiteFooter() {
                 Corecții și sesizări
               </Link>
             </li>
+            <li>
+              <Link href="/sustine" className="underline underline-offset-4 hover:text-ink-16">
+                Sprijin operațional
+              </Link>
+            </li>
           </ul>
         </div>
         <div className="space-y-3">
@@ -89,21 +94,40 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-border">
-        <div className="mx-auto flex w-full max-w-(--breakpoint-2xl) flex-col gap-2 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex w-full max-w-(--breakpoint-2xl) flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="label-mono text-ink-45">
             Monitorul.ai · Arhivă publică · Conținut neoficial
           </p>
-          <p className="label-mono text-ink-45">
-            Pipeline date{" "}
+          <nav
+            aria-label="Pagini legale și surse"
+            className="label-mono flex flex-wrap gap-x-5 gap-y-2 text-ink-45"
+          >
+            <Link
+              href="/confidentialitate"
+              className="underline underline-offset-4 hover:text-ink-30"
+            >
+              Confidențialitate
+            </Link>
+            <Link href="/termeni" className="underline underline-offset-4 hover:text-ink-30">
+              Termeni
+            </Link>
             <a
               href="https://github.com/ciocan/monitorul-ii"
               className="underline underline-offset-4 hover:text-ink-30"
               rel="noreferrer"
               target="_blank"
             >
-              monitorul-ii
+              Pipeline (AGPL-3.0)
             </a>
-          </p>
+            <a
+              href="https://github.com/ciocan/monitorul.ai"
+              className="underline underline-offset-4 hover:text-ink-30"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Site (AGPL-3.0)
+            </a>
+          </nav>
         </div>
       </div>
     </footer>

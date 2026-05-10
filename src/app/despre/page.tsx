@@ -280,8 +280,16 @@ export default function DesprePage() {
           </li>
         </ul>
         <p className="mt-5">
-          Nu vindem date și nu folosim un serviciu de analytics terț. Ștergerea contului și a
-          tuturor datelor asociate se face la cerere prin canalul de la{" "}
+          Nu vindem date, nu rulăm Google Analytics, nu înregistrăm sesiuni și nu profilăm
+          vizitatori. Folosim un singur serviciu de analiză agregată anonimă (PostHog, găzduit în
+          UE), configurat fără cookie-uri și fără identificare individuală — detalii pe pagina de{" "}
+          <Link
+            href="/confidentialitate"
+            className="underline underline-offset-4 hover:text-ink-16"
+          >
+            confidențialitate
+          </Link>
+          . Ștergerea contului și a tuturor datelor asociate se face la cerere prin canalul de la{" "}
           <a href="#corectii" className="underline underline-offset-4 hover:text-ink-16">
             #corectii
           </a>
@@ -622,10 +630,24 @@ export default function DesprePage() {
           <code>user_id</code> la <code>null</code> în log-urile reținute istoric.
         </p>
         <p>
-          Fără cookie-uri terțe, fără pixel de tracking, fără serviciu de analytics third-party.
-          Singurele cookie-uri sunt cele scrise de Better Auth pentru sesiunea de browser (prefix{" "}
-          <code className="font-mono-meta text-ink-16">mo.</code>) și nu sunt vizibile de niciun alt
-          domeniu.
+          Fără cookie-uri terțe, fără pixel de tracking, fără rețele de publicitate, fără session
+          replay. Folosim PostHog (instanță UE-Frankfurt) pentru analiză strict agregată anonimă
+          configurată cookieless (
+          <code className="font-mono-meta text-ink-16">persistence: &apos;memory&apos;</code>,{" "}
+          <code className="font-mono-meta text-ink-16">person_profiles: &apos;never&apos;</code>,{" "}
+          <code className="font-mono-meta text-ink-16">autocapture: false</code>,{" "}
+          <code className="font-mono-meta text-ink-16">disable_session_recording: true</code>).
+          Singurele cookie-uri scrise local sunt cele de sesiune Better Auth (prefix{" "}
+          <code className="font-mono-meta text-ink-16">mo.</code>), strict necesare pentru
+          autentificarea OAuth și nevizibile de alte domenii. Detaliile complete despre PostHog
+          (sub-procesor, transferuri, retenție 12 luni, opt-out via Do Not Track) sunt pe pagina de{" "}
+          <Link
+            href="/confidentialitate"
+            className="underline underline-offset-4 hover:text-ink-16"
+          >
+            confidențialitate
+          </Link>
+          .
         </p>
       </Section>
     </article>

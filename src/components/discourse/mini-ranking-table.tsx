@@ -13,12 +13,14 @@ const AXIS_TITLE = {
   hawkins: "Top H ≥ 1 (populism)",
   vparty: "Top V ≥ 1 (anti-pluralism)",
   dqi: "Top DQI ≥ L2 (calitate deliberativă)",
+  "dqi-clean": "Top DQI ≥ L2 fără cadre populiste sau anti-pluraliste",
 } as const;
 
 const AXIS_RATE_LABEL = {
   hawkins: "rate H ≥ 1",
   vparty: "rate V ≥ 1",
   dqi: "rate DQI ≥ 2",
+  "dqi-clean": "rate DQI ≥ 2 cu H = 0 și V = 0",
 } as const;
 
 export interface MiniRankingTableProps {

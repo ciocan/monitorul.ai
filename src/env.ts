@@ -96,6 +96,26 @@ export const env = createEnv({
     // sign-in that the OAuth-consent flow eventually delegates to.
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
+    // Stripe Payment Links (configured in the Stripe dashboard with custom-amount
+    // enabled). The /sustine page links directly — no server-side Stripe SDK,
+    // no API route, no webhook. Both optional: when unset, the contribute
+    // buttons render as a disabled "Disponibil în curând" state so the page
+    // builds and dev runs without Stripe set up.
+    STRIPE_PAYMENT_LINK_MONTHLY: z.url().optional(),
+    STRIPE_PAYMENT_LINK_ONESHOT: z.url().optional(),
+    // Public IBAN printed on /sustine as the second payment rail. All four
+    // optional: the IBAN block hides entirely when SUSTINE_IBAN is unset.
+    // Account name should match the registered legal name of the receiving
+    // entity (the UK Ltd) — readers cross-reference this against Companies
+    // House when verifying the entity.
+    SUSTINE_IBAN: z.string().min(1).optional(),
+    SUSTINE_BIC: z.string().min(1).optional(),
+    SUSTINE_ACCOUNT_NAME: z.string().min(1).optional(),
+    SUSTINE_BANK_NAME: z.string().min(1).optional(),
+    // Contact email for invoice requests, MCP rate-limit raises, and other
+    // /sustine questions. When unset, the "Întrebări" section omits the
+    // address — the page still builds.
+    SUSTINE_CONTACT_EMAIL: z.email().optional(),
   },
   client: {
     NEXT_PUBLIC_SITE_URL: z.url().default("https://monitorul.ai"),
