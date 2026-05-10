@@ -81,7 +81,7 @@ export function SpeechDiscourseSummary({
         <p className="font-mono-meta mt-3 border-t border-paper-91 pt-2 text-[11px] text-ink-45">
           Codat de {producerLabel}.{" "}
           <Link
-            href="/despre#discurs-analiza"
+            href="/despre/discurs"
             className="underline decoration-paper-91 underline-offset-2 hover:text-ink-30 hover:decoration-ink-30"
           >
             Metodologie

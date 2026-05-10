@@ -441,16 +441,18 @@ export interface PersonActivityDay {
 // in a single ES round-trip.
 
 export interface DiscourseTrajectoryMonth {
-  // "YYYY-MM" key for the month, sortable lexicographically.
+  // Bucket key, sortable lexicographically. Shape depends on the trajectory's
+  // `granularity`: "YYYY-MM" when monthly (single year selected), "YYYY" when
+  // yearly (career view, no year filter).
   month: string;
-  // Counts of *coded* substantive speeches in this month, broken down by
+  // Counts of *coded* substantive speeches in this bucket, broken down by
   // each framework's score. `dqi` carries the level_of_justification 0/1/2/3
   // breakdown rather than the 0/1/2 score (DQI is multi-axis; the level is
   // the single most informative scalar).
   hawkins: { 0: number; 1: number; 2: number };
   vparty: { 0: number; 1: number; 2: number };
   dqi: { 0: number; 1: number; 2: number; 3: number };
-  // Total *coded* speeches in this month — denominator for the rate framing.
+  // Total *coded* speeches in this bucket — denominator for the rate framing.
   codedTotal: number;
 }
 
@@ -479,7 +481,8 @@ export interface DiscourseTopMarker {
 
 export interface DiscourseVoiceMix {
   // Per-voice share (0..1) over the selected window. Used by the Voce tab's
-  // stacked-area chart.
+  // stacked-area chart. Bucket key shape mirrors `DiscourseTrajectoryMonth.month`
+  // and depends on the trajectory's `granularity`: "YYYY-MM" or "YYYY".
   month: string;
   totals: Partial<Record<DiscourseVoice, number>>;
   total: number;
@@ -499,9 +502,17 @@ export interface DiscourseCoverage {
 
 export interface PersonDiscourseTrajectoryPayload {
   personId: string;
-  // The year the chart is currently rendering. Derived from `?year=` or
-  // defaults to the most recent year with coded speeches for this politician.
-  selectedYear: number;
+  // Currently rendered year. `null` is the career-wide default (no `?year=`
+  // in the URL); a number selects a specific year drilldown.
+  selectedYear: number | null;
+  // "month": monthly buckets within `selectedYear`. "year": yearly buckets
+  // across the politician's full career when no year is selected.
+  granularity: "month" | "year";
+  // First / last career years with substantive activity (any speeches),
+  // populated even when no codings exist. Drives the scatter's x-axis range
+  // when `selectedYear` is null.
+  firstActiveYear: number | null;
+  lastActiveYear: number | null;
   monthly: DiscourseTrajectoryMonth[];
   speechDots: DiscourseSpeechDot[];
   voiceMix: DiscourseVoiceMix[];

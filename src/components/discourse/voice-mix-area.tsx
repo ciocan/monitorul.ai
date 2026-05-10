@@ -40,37 +40,51 @@ const MONTH_LABELS_RO = ["I", "F", "M", "A", "M", "I", "I", "A", "S", "O", "N", 
 
 export interface VoiceMixAreaProps {
   voiceMix: DiscourseVoiceMix[];
-  year: number;
+  granularity: "month" | "year";
+  year: number | null;
+  yearRange?: { first: number | null; last: number | null };
   className?: string;
 }
 
-export function VoiceMixArea({ voiceMix, year, className }: VoiceMixAreaProps) {
-  const months = Array.from({ length: 12 }, (_, i) => {
-    const monthKey = `${year}-${String(i + 1).padStart(2, "0")}`;
-    return voiceMix.find((m) => m.month === monthKey) ?? { month: monthKey, totals: {}, total: 0 };
-  });
-  const maxTotal = Math.max(1, ...months.map((m) => m.total));
-  const cellWidth = 32;
+export function VoiceMixArea({
+  voiceMix,
+  granularity,
+  year,
+  yearRange,
+  className,
+}: VoiceMixAreaProps) {
+  const buckets =
+    granularity === "month"
+      ? buildMonthBuckets(voiceMix, year)
+      : buildYearBuckets(voiceMix, yearRange);
+  const labels =
+    granularity === "month"
+      ? MONTH_LABELS_RO
+      : buckets.map((b) => String(Number.parseInt(b.month, 10) % 100).padStart(2, "0"));
+  const maxTotal = Math.max(1, ...buckets.map((m) => m.total));
   const barAreaH = 100;
   // For the legend: which voices appear at all in this window?
   const seen = new Set<DiscourseVoice>();
-  for (const m of months) {
+  for (const m of buckets) {
     for (const v of Object.keys(m.totals)) seen.add(v as DiscourseVoice);
   }
+  const ariaLabel =
+    granularity === "month"
+      ? `Mixul de voce, lunar, ${year ?? ""}`
+      : `Mixul de voce, anual, întreaga carieră`;
   return (
     <div
       className={cn("border border-paper-91 bg-paper-99 px-3 pt-3 pb-2", className)}
       role="img"
-      aria-label={`Mixul de voce, lunar, ${year}`}
+      aria-label={ariaLabel}
     >
       <div className="flex items-end gap-1">
-        {months.map((m, i) => {
+        {buckets.map((m, i) => {
           const totalH = m.total === 0 ? 0 : Math.max(2, (m.total / maxTotal) * barAreaH);
           return (
             <div
               key={m.month}
-              className="flex flex-col items-center"
-              style={{ width: cellWidth }}
+              className="flex min-w-0 flex-1 flex-col items-center"
               title={tooltip(m)}
             >
               <div
@@ -89,7 +103,7 @@ export function VoiceMixArea({ voiceMix, year, className }: VoiceMixAreaProps) {
                 className="font-mono-meta mt-1 text-[10px] text-ink-45 select-none"
                 style={{ height: 18 }}
               >
-                {MONTH_LABELS_RO[i]}
+                {labels[i]}
               </span>
             </div>
           );
@@ -112,4 +126,35 @@ function tooltip(m: DiscourseVoiceMix): string {
     .filter(([, n]) => (typeof n === "number" ? n > 0 : false))
     .map(([k, n]) => `${k}:${n}`);
   return `${m.month} · total ${m.total} · ${parts.join(" ")}`;
+}
+
+const EMPTY_VOICE_MIX = (key: string): DiscourseVoiceMix => ({ month: key, totals: {}, total: 0 });
+
+function buildMonthBuckets(
+  voiceMix: DiscourseVoiceMix[],
+  year: number | null,
+): DiscourseVoiceMix[] {
+  const y = year ?? new Date().getUTCFullYear();
+  return Array.from({ length: 12 }, (_, i) => {
+    const key = `${y}-${String(i + 1).padStart(2, "0")}`;
+    return voiceMix.find((m) => m.month === key) ?? EMPTY_VOICE_MIX(key);
+  });
+}
+
+function buildYearBuckets(
+  voiceMix: DiscourseVoiceMix[],
+  yearRange: VoiceMixAreaProps["yearRange"],
+): DiscourseVoiceMix[] {
+  const dataYears = voiceMix
+    .map((m) => Number.parseInt(m.month, 10))
+    .filter((n) => Number.isFinite(n));
+  const first = yearRange?.first ?? (dataYears.length > 0 ? Math.min(...dataYears) : null);
+  const last = yearRange?.last ?? (dataYears.length > 0 ? Math.max(...dataYears) : null);
+  if (first === null || last === null) return voiceMix;
+  const result: DiscourseVoiceMix[] = [];
+  for (let y = first; y <= last; y += 1) {
+    const key = String(y);
+    result.push(voiceMix.find((m) => m.month === key) ?? EMPTY_VOICE_MIX(key));
+  }
+  return result;
 }

@@ -27,7 +27,7 @@ export function ConfidenceToggle({
     <span
       className={cn("inline-flex items-center gap-px border border-paper-91 text-xs", className)}
       role="group"
-      aria-label="Filtru de încredere"
+      aria-label="Filtru de încredere: pragul ≥ 0.7 este standardul publicării; implicit toate codările, cu bule de încredere per marker pentru explorare"
     >
       <Chip href={allHref} active={confidenceMin === null}>
         Toate codările
@@ -35,13 +35,6 @@ export function ConfidenceToggle({
       <Chip href={minHref} active={confidenceMin === 0.7}>
         Doar ≥ 0.7
       </Chip>
-      <span
-        className="px-1 text-ink-45"
-        title="Pragul ≥ 0.7 este standardul publicării (vezi /despre). Default ‘toate codările’ + bule de încredere per-marker pentru explorare."
-        aria-hidden="true"
-      >
-        ⓘ
-      </span>
     </span>
   );
 }
@@ -58,6 +51,8 @@ function Chip({
   return (
     <Link
       href={href}
+      scroll={false}
+      prefetch={false}
       aria-current={active ? "true" : undefined}
       className={cn(
         "px-2 py-1 transition-colors",

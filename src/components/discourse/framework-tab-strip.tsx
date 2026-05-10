@@ -45,6 +45,8 @@ export function FrameworkTabStrip({
           <Link
             key={fw}
             href={href}
+            scroll={false}
+            prefetch={false}
             aria-current={active ? "page" : undefined}
             className={cn(
               "px-3 py-2 transition-colors",

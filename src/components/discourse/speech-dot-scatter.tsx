@@ -27,31 +27,49 @@ const ROW_LABEL = {
 
 export interface SpeechDotScatterProps {
   dots: DiscourseSpeechDot[];
-  year: number;
+  // When set: filter to that year, x-axis spans Jan→Dec.
+  // When null: span the entire `[firstYear, lastYear]` career window.
+  year: number | null;
+  firstYear?: number | null;
+  lastYear?: number | null;
   axis: "hawkins" | "vparty" | "dqi";
   className?: string;
 }
 
-export function SpeechDotScatter({ dots, year, axis, className }: SpeechDotScatterProps) {
-  const yearStart = Date.UTC(year, 0, 1);
-  const yearEnd = Date.UTC(year, 11, 31);
+export function SpeechDotScatter({
+  dots,
+  year,
+  firstYear,
+  lastYear,
+  axis,
+  className,
+}: SpeechDotScatterProps) {
   const innerW = VB_WIDTH - PADDING_LEFT - PADDING_RIGHT;
   const innerH = VB_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
   const labels = ROW_LABEL[axis];
   const rowCount = labels.length;
   const rowSpacing = innerH / Math.max(rowCount - 1, 1);
-  // Filter to dots in the selected year that have a value on the active axis.
+
+  // X-axis range: when year is set, [year-01-01, year-12-31]; when null, the
+  // full career window [firstYear-01-01, lastYear-12-31].
+  const rangeFirstYear = year ?? firstYear ?? new Date().getUTCFullYear();
+  const rangeLastYear = year ?? lastYear ?? rangeFirstYear;
+  const xStart = Date.UTC(rangeFirstYear, 0, 1);
+  const xEnd = Date.UTC(rangeLastYear, 11, 31);
+
+  // Filter dots to the visible window.
   const visible = dots.filter((d) => {
-    if (!d.sessionDate.startsWith(String(year))) return false;
+    if (year !== null && !d.sessionDate.startsWith(String(year))) return false;
     if (axis === "hawkins") return d.hScore !== null;
     if (axis === "vparty") return d.vScore !== null;
     return d.dqiLevel !== null;
   });
+  const ariaWindow = year !== null ? `în ${year}` : `în întreaga carieră`;
   return (
     <div
       className={cn("border border-paper-91 bg-paper-99 px-3 py-3", className)}
       role="img"
-      aria-label={`${visible.length} discursuri analizate în ${year}, plotate pe scara ${axis}`}
+      aria-label={`${visible.length} discursuri analizate ${ariaWindow}, plotate pe scara ${axis}`}
     >
       <svg
         viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
@@ -81,10 +99,12 @@ export function SpeechDotScatter({ dots, year, axis, className }: SpeechDotScatt
             </g>
           );
         })}
-        {monthGuides(year, innerW, PADDING_LEFT, PADDING_TOP, innerH)}
+        {year !== null
+          ? monthGuides(year, innerW, PADDING_LEFT, PADDING_TOP, innerH)
+          : yearGuides(rangeFirstYear, rangeLastYear, innerW, PADDING_LEFT, PADDING_TOP, innerH)}
         {visible.map((dot) => {
           const t = parseDateUtc(dot.sessionDate);
-          const ratioX = yearEnd === yearStart ? 0.5 : (t - yearStart) / (yearEnd - yearStart);
+          const ratioX = xEnd === xStart ? 0.5 : (t - xStart) / (xEnd - xStart);
           const cx = PADDING_LEFT + ratioX * innerW;
           const score =
             axis === "hawkins" ? dot.hScore : axis === "vparty" ? dot.vScore : dot.dqiLevel;
@@ -127,6 +147,52 @@ export function SpeechDotScatter({ dots, year, axis, className }: SpeechDotScatt
       </p>
     </div>
   );
+}
+
+function yearGuides(
+  firstYear: number,
+  lastYear: number,
+  innerW: number,
+  padX: number,
+  padY: number,
+  innerH: number,
+) {
+  const xStart = Date.UTC(firstYear, 0, 1);
+  const xEnd = Date.UTC(lastYear, 11, 31);
+  const guides: React.JSX.Element[] = [];
+  const span = lastYear - firstYear + 1;
+  // Sparse year labels — every year if ≤ 8 years, else every other year.
+  const labelStep = span <= 8 ? 1 : Math.ceil(span / 8);
+  for (let y = firstYear; y <= lastYear; y += 1) {
+    const t = Date.UTC(y, 0, 1);
+    const ratio = xEnd === xStart ? 0.5 : (t - xStart) / (xEnd - xStart);
+    const x = padX + ratio * innerW;
+    guides.push(
+      <line
+        key={`y-guide-${y}`}
+        x1={x}
+        x2={x}
+        y1={padY}
+        y2={padY + innerH}
+        className="stroke-paper-91/50"
+        strokeWidth={0.5}
+      />,
+    );
+    if ((y - firstYear) % labelStep === 0) {
+      guides.push(
+        <text
+          key={`y-label-${y}`}
+          x={x}
+          y={padY + innerH + 18}
+          textAnchor="middle"
+          className="fill-ink-45 font-mono text-[10px]"
+        >
+          {y}
+        </text>,
+      );
+    }
+  }
+  return guides;
 }
 
 function monthGuides(year: number, innerW: number, padX: number, padY: number, innerH: number) {

@@ -2145,16 +2145,16 @@ export async function personDiscourseTrajectory(
         hitsTotal: 0,
       };
     }
-    // Default selection: most recent year with coded speeches; fallback to
-    // most recent active year (so a politician with zero codings still gets
-    // their latest year on the x-axis, even if the panel renders empty).
-    const lastCodedYear = [...yearly].reverse().find((y) => y.coded > 0)?.year;
-    const lastActiveYear = yearly.at(-1)?.year ?? new Date().getUTCFullYear();
-    const selectedYear = opts.year ?? lastCodedYear ?? lastActiveYear;
-    const yearRange = {
-      gte: `${selectedYear}-01-01`,
-      lte: `${selectedYear}-12-31`,
-    };
+    // No `?year=` ⇒ career view: aggregate per-year across the politician's
+    // full activity window. A specific `?year=N` drills into per-month buckets
+    // for that year. The panel and its charts react to `granularity` to render
+    // the correct x-axis (12 months vs N years).
+    const firstActiveYear = yearly.at(0)?.year ?? null;
+    const lastActiveYear = yearly.at(-1)?.year ?? null;
+    const selectedYear: number | null = opts.year ?? null;
+    const granularity: "month" | "year" = selectedYear === null ? "year" : "month";
+    const yearRange =
+      selectedYear === null ? null : { gte: `${selectedYear}-01-01`, lte: `${selectedYear}-12-31` };
     const baseFilters = buildDiscourseFilters(personId, voiceMode, yearRange);
     const hawkinsFilter: QueryDslQueryContainer[] = [];
     const vpartyFilter: QueryDslQueryContainer[] = [];
@@ -2184,11 +2184,12 @@ export async function personDiscourseTrajectory(
         per_month: {
           date_histogram: {
             field: "session_date",
-            calendar_interval: "month",
-            format: "yyyy-MM",
-            // Skip empty months — the aggregate-band component pads to 12
-            // visually so we don't need extended_bounds (which requires the
-            // bounds to match the agg's `format`, not the source field shape).
+            calendar_interval: granularity === "year" ? "year" : "month",
+            format: granularity === "year" ? "yyyy" : "yyyy-MM",
+            // Skip empty buckets — the aggregate-band component densifies
+            // the visible range so we don't need extended_bounds (which
+            // requires the bounds to match the agg's `format`, not the
+            // source field shape).
             min_doc_count: 1,
           },
           aggs: {
@@ -2374,6 +2375,9 @@ export async function personDiscourseTrajectory(
       result: {
         personId,
         selectedYear,
+        granularity,
+        firstActiveYear,
+        lastActiveYear,
         monthly,
         speechDots,
         voiceMix,

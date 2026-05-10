@@ -2,43 +2,52 @@ import { cn } from "@/lib/utils";
 
 import type { DiscourseTrajectoryMonth } from "@/lib/types";
 
-// Compact stacked-bar band rendering H=0 / H=1 / H=2 (or V variant) per month
-// for the selected year. Drawn as inline SVG so the tokens flow straight
-// through Tailwind classes — no chart library, no theme overrides, ~100 LOC.
-//
-// Width: spans the whole flex column, so the chart's parent must establish
-// the constraining width. Height is fixed at 80px (six bar slots, gives the
-// month labels enough breathing room without dominating the page).
+// Compact stacked-bar band rendering H=0 / H=1 / H=2 (or V variant) per bucket
+// — one cell per month within a selected year, OR one cell per career year
+// when no year is selected. Drawn as inline divs so the tokens flow through
+// Tailwind classes — no chart library, no theme overrides, ~150 LOC.
 
 const MONTH_LABELS_RO = ["I", "F", "M", "A", "M", "I", "I", "A", "S", "O", "N", "D"];
 
 export interface AggregateBandProps {
   monthly: DiscourseTrajectoryMonth[];
-  year: number;
+  granularity: "month" | "year";
+  // When granularity is "month", the year of the selected drilldown.
+  // When "year", the inclusive [first, last] career window the chart densifies
+  // across. `null` falls back to the data's own min/max keys.
+  year: number | null;
+  yearRange?: { first: number | null; last: number | null };
   axis: "hawkins" | "vparty" | "dqi";
   className?: string;
 }
 
-export function AggregateBand({ monthly, year, axis, className }: AggregateBandProps) {
-  // Pad/clip to exactly 12 months so the year always renders as a full year
-  // strip even when the producer hasn't coded every month yet.
-  const months = Array.from({ length: 12 }, (_, i) => {
-    const monthKey = `${year}-${String(i + 1).padStart(2, "0")}`;
-    const found = monthly.find((m) => m.month === monthKey);
-    return (
-      found ?? {
-        month: monthKey,
-        hawkins: { 0: 0, 1: 0, 2: 0 },
-        vparty: { 0: 0, 1: 0, 2: 0 },
-        dqi: { 0: 0, 1: 0, 2: 0, 3: 0 },
-        codedTotal: 0,
-      }
-    );
-  });
+const EMPTY_BUCKET = (key: string): DiscourseTrajectoryMonth => ({
+  month: key,
+  hawkins: { 0: 0, 1: 0, 2: 0 },
+  vparty: { 0: 0, 1: 0, 2: 0 },
+  dqi: { 0: 0, 1: 0, 2: 0, 3: 0 },
+  codedTotal: 0,
+});
 
-  const maxCoded = Math.max(1, ...months.map((m) => m.codedTotal));
-  const cellWidth = 32;
-  const cellGap = 4;
+export function AggregateBand({
+  monthly,
+  granularity,
+  year,
+  yearRange,
+  axis,
+  className,
+}: AggregateBandProps) {
+  const buckets =
+    granularity === "month"
+      ? buildMonthBuckets(monthly, year ?? new Date().getUTCFullYear())
+      : buildYearBuckets(monthly, yearRange);
+
+  const labels =
+    granularity === "month"
+      ? MONTH_LABELS_RO
+      : buckets.map((b) => String(Number.parseInt(b.month, 10) % 100).padStart(2, "0"));
+
+  const maxCoded = Math.max(1, ...buckets.map((b) => b.codedTotal));
   const barAreaH = 60;
   const labelH = 18;
 
@@ -46,14 +55,13 @@ export function AggregateBand({ monthly, year, axis, className }: AggregateBandP
     <div
       className={cn("border border-paper-91 bg-paper-99 px-3 pt-3 pb-2", className)}
       role="img"
-      aria-label={axisDescription(axis, year)}
+      aria-label={axisDescription(axis, granularity, year)}
     >
       <div className="flex items-end gap-1">
-        {months.map((m, i) => (
+        {buckets.map((m, i) => (
           <div
             key={m.month}
-            className="flex flex-col items-center"
-            style={{ width: cellWidth }}
+            className="flex min-w-0 flex-1 flex-col items-center"
             title={tooltipText(axis, m)}
           >
             {axis === "dqi" ? (
@@ -62,21 +70,50 @@ export function AggregateBand({ monthly, year, axis, className }: AggregateBandP
               <HvStack month={m} axis={axis} maxCoded={maxCoded} barAreaH={barAreaH} />
             )}
             <span
-              className={cn("font-mono-meta mt-1 text-[10px] text-ink-45", "select-none")}
+              className={cn("font-mono-meta mt-1 text-[10px] text-ink-45 select-none")}
               style={{ height: labelH }}
             >
-              {MONTH_LABELS_RO[i]}
+              {labels[i]}
             </span>
           </div>
         ))}
       </div>
       <Legend axis={axis} />
       <p className="font-mono-meta mt-1 text-[10px] text-ink-45" data-tabular-nums="">
-        {year} · max {maxCoded} discursuri/lună · {cellWidth}×{cellGap}px (px notation only, labels
-        in monospace)
+        {granularity === "month"
+          ? `${year} · max ${maxCoded} discursuri/lună`
+          : `întreaga carieră · max ${maxCoded} discursuri/an`}
       </p>
     </div>
   );
+}
+
+function buildMonthBuckets(
+  monthly: DiscourseTrajectoryMonth[],
+  year: number,
+): DiscourseTrajectoryMonth[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const key = `${year}-${String(i + 1).padStart(2, "0")}`;
+    return monthly.find((m) => m.month === key) ?? EMPTY_BUCKET(key);
+  });
+}
+
+function buildYearBuckets(
+  monthly: DiscourseTrajectoryMonth[],
+  yearRange: AggregateBandProps["yearRange"],
+): DiscourseTrajectoryMonth[] {
+  const dataYears = monthly
+    .map((m) => Number.parseInt(m.month, 10))
+    .filter((n) => Number.isFinite(n));
+  const first = yearRange?.first ?? (dataYears.length > 0 ? Math.min(...dataYears) : null);
+  const last = yearRange?.last ?? (dataYears.length > 0 ? Math.max(...dataYears) : null);
+  if (first === null || last === null) return monthly;
+  const result: DiscourseTrajectoryMonth[] = [];
+  for (let y = first; y <= last; y += 1) {
+    const key = String(y);
+    result.push(monthly.find((m) => m.month === key) ?? EMPTY_BUCKET(key));
+  }
+  return result;
 }
 
 function HvStack({
@@ -170,9 +207,16 @@ function LegendChip({ color, label }: { color: string; label: string }) {
   );
 }
 
-function axisDescription(axis: "hawkins" | "vparty" | "dqi", year: number): string {
+function axisDescription(
+  axis: "hawkins" | "vparty" | "dqi",
+  granularity: "month" | "year",
+  year: number | null,
+): string {
   const name = axis === "hawkins" ? "Populism" : axis === "vparty" ? "Anti-pluralism" : "DQI";
-  return `${name}: distribuția lunară a discursurilor analizate în ${year}`;
+  if (granularity === "year") {
+    return `${name}: distribuția anuală a discursurilor analizate de-a lungul carierei`;
+  }
+  return `${name}: distribuția lunară a discursurilor analizate în ${year ?? "anul selectat"}`;
 }
 
 function tooltipText(axis: "hawkins" | "vparty" | "dqi", m: DiscourseTrajectoryMonth): string {

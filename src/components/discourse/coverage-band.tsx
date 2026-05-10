@@ -15,8 +15,20 @@ export interface CoverageBandProps {
   coverage: DiscourseCoverage;
   basePath: string;
   searchParams: URLSearchParams;
-  selectedYear: number;
+  selectedYear: number | null;
   className?: string;
+}
+
+function buildYearHref(
+  basePath: string,
+  searchParams: URLSearchParams,
+  year: number | null,
+): string {
+  const sp = new URLSearchParams(searchParams);
+  if (year === null) sp.delete("year");
+  else sp.set("year", String(year));
+  const qs = sp.toString();
+  return qs ? `${basePath}?${qs}` : basePath;
 }
 
 export function CoverageBand({
@@ -32,10 +44,28 @@ export function CoverageBand({
     coverage.totalSubstantive > 0
       ? Math.round((coverage.codedSubstantive / coverage.totalSubstantive) * 100)
       : 0;
+  const allYearsActive = selectedYear === null;
+  const allYearsHref = buildYearHref(basePath, searchParams, null);
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("space-y-3 border-y border-paper-91 py-4", className)}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="label-mono text-ink-30">Acoperire pe an</p>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p className="label-mono text-ink-30">Acoperire pe an</p>
+          <Link
+            href={allYearsHref}
+            scroll={false}
+            prefetch={false}
+            aria-current={allYearsActive ? "true" : undefined}
+            className={cn(
+              "label-mono px-1.5 py-0.5 transition-colors",
+              allYearsActive
+                ? "bg-ink-16 text-paper-99"
+                : "text-ink-45 hover:bg-paper-96 hover:text-ink-30",
+            )}
+          >
+            Toți anii
+          </Link>
+        </div>
         <p
           className="font-mono-meta text-xs text-ink-45"
           data-tabular-nums=""
@@ -45,18 +75,9 @@ export function CoverageBand({
           {coverage.totalSubstantive.toLocaleString("ro-RO")} analizate · {codedRatio}%
         </p>
       </div>
-      <div className="flex items-end gap-1 overflow-x-auto pb-1">
+      <div className="flex items-end gap-1 pb-1">
         {coverage.yearly.map((y) => {
-          const sp = new URLSearchParams(searchParams);
-          if (y.year === coverage.yearly.at(-1)?.year) sp.delete("year");
-          else sp.set("year", String(y.year));
-          // Avoid pinning year for the "default" most-recent year — keeps
-          // the URL terse on the most common case.
-          if (y.year === selectedYear && y.year === coverage.yearly.at(-1)?.year) sp.delete("year");
-          else if (y.year === selectedYear) sp.set("year", String(y.year));
-          else sp.set("year", String(y.year));
-          const qs = sp.toString();
-          const href = qs ? `${basePath}?${qs}` : basePath;
+          const href = buildYearHref(basePath, searchParams, y.year);
           const totalH = Math.max(2, (y.total / maxTotal) * 56);
           const codedFraction = y.total > 0 ? y.coded / y.total : 0;
           const codedH = Math.max(0, codedFraction * totalH);
@@ -65,10 +86,12 @@ export function CoverageBand({
             <Link
               key={y.year}
               href={href}
+              scroll={false}
+              prefetch={false}
               aria-current={active ? "true" : undefined}
               title={`${y.year} · ${y.coded} din ${y.total} analizate`}
               className={cn(
-                "group/year flex w-9 flex-col items-center rounded-none px-0.5 transition-opacity hover:opacity-100",
+                "group/year flex min-w-0 flex-1 flex-col items-center rounded-none px-0.5 transition-opacity hover:opacity-100",
                 active ? "opacity-100" : "opacity-80",
               )}
             >
@@ -86,7 +109,7 @@ export function CoverageBand({
                     style={{
                       height: totalH,
                       backgroundImage:
-                        "repeating-linear-gradient(45deg, rgba(0,0,0,0.06) 0 2px, transparent 2px 4px)",
+                        "repeating-linear-gradient(45deg, oklch(0.16 0.012 240 / 0.08) 0 2px, transparent 2px 4px)",
                     }}
                     aria-label="neanalizat"
                   />
@@ -111,8 +134,8 @@ export function CoverageBand({
         })}
       </div>
       <p className="font-mono-meta text-[10px] text-ink-45">
-        Bara <span className="bg-azure-3/80 px-1 text-paper-99">azură</span> = analizat · zonă
-        hașurată = neanalizat încă (acoperire curentă: martie 2023 →)
+        Bara <span className="bg-azure-3/80 px-1 text-paper-99">azură</span>: analizat · zonă
+        hașurată: neanalizat încă (acoperire curentă: 2020 →)
       </p>
     </div>
   );

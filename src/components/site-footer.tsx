@@ -56,6 +56,14 @@ export function SiteFooter() {
             </li>
             <li>
               <Link
+                href="/despre/discurs"
+                className="underline underline-offset-4 hover:text-ink-16"
+              >
+                Analiza discursului
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/despre#identitate"
                 className="underline underline-offset-4 hover:text-ink-16"
               >

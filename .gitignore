@@ -45,3 +45,7 @@ next-env.d.ts
 .impeccable/live/server.json
 .impeccable/live/sessions/
 .impeccable/live/annotations/
+
+# smoke-test artifacts from playwright/chrome-devtools MCP sessions
+.playwright-mcp/
+.chrome-devtools-mcp/

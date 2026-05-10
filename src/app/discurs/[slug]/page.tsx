@@ -230,10 +230,9 @@ export default async function SpeechPage({ params, searchParams }: PageProps) {
                 .map((para, i) => (para.trim() ? <p key={i}>{para.trim()}</p> : null))}
             </div>
             <p className="mt-6 max-w-prose text-xs leading-relaxed text-ink-45">
-              Acest discurs nu este încă acoperit de analiza de discurs (acoperire curentă: martie
-              2023 →).{" "}
+              Acest discurs nu este încă acoperit de analiza de discurs (acoperire curentă: 2020 →).{" "}
               <Link
-                href="/despre#discurs-analiza"
+                href="/despre/discurs"
                 className="underline decoration-paper-91 underline-offset-2 hover:text-ink-30 hover:decoration-ink-30"
               >
                 Vezi metodologia

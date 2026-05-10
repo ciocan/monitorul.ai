@@ -31,8 +31,8 @@ export function MethodologyBlock({ producerLabel, className }: MethodologyBlockP
       <p className="mt-3 max-w-prose">
         Codările au fost produse de <span className="font-mono-meta">{codedBy}</span>. Recodarea sub
         un alt model, prompt sau cadru poate genera rezultate diferite. Acoperire: speech-uri
-        substanțiale începând cu <span className="font-mono-meta">martie 2023</span>; restul arhivei
-        rămâne neanalizat.
+        substanțiale începând cu <span className="font-mono-meta">2020</span>; restul arhivei rămâne
+        neanalizat.
       </p>
       <p className="mt-3 max-w-prose">
         Codările nu au fost încă validate față de acordul inter-codator (κ); proiectul plănuiește
@@ -42,7 +42,7 @@ export function MethodologyBlock({ producerLabel, className }: MethodologyBlockP
       </p>
       <p className="mt-3 max-w-prose">
         <Link
-          href="/despre#discurs-analiza"
+          href="/despre/discurs"
           className="underline decoration-paper-91 underline-offset-2 hover:text-ink-30 hover:decoration-ink-30"
         >
           Detalii complete despre metodologie →

@@ -30,7 +30,7 @@ export function VoiceToggle({ basePath, searchParams, voiceMode, className }: Vo
     <span
       className={cn("inline-flex items-center gap-px border border-paper-91 text-xs", className)}
       role="group"
-      aria-label="Filtru voce"
+      aria-label="Filtru voce: implicit, doar marcheri în vocea proprie a vorbitorului; toate vocile include citate, vorbire indirectă, negări și apofază"
     >
       <Chip href={firstHref} active={voiceMode === "first-person"}>
         Vocea proprie
@@ -38,13 +38,6 @@ export function VoiceToggle({ basePath, searchParams, voiceMode, className }: Vo
       <Chip href={allHref} active={voiceMode === "all"}>
         Toate vocile
       </Chip>
-      <span
-        className="px-1 text-ink-45"
-        title="Implicit: doar marcheri în vocea proprie a vorbitorului. Toate vocile include citate, vorbire indirectă, negări și apofază."
-        aria-hidden="true"
-      >
-        ⓘ
-      </span>
     </span>
   );
 }
@@ -61,6 +54,8 @@ function Chip({
   return (
     <Link
       href={href}
+      scroll={false}
+      prefetch={false}
       aria-current={active ? "true" : undefined}
       className={cn(
         "px-2 py-1 transition-colors",

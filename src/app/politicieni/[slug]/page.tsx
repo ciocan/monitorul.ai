@@ -6,6 +6,7 @@ import { ContributionsGraph } from "@/components/contributions-graph";
 import { Dateline } from "@/components/dateline";
 import { PersonDiscoursePanel } from "@/components/discourse/person-discourse-panel";
 import { Pagination } from "@/components/pagination";
+import { SectionOpener } from "@/components/section-opener";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { YearlyActivityChart } from "@/components/yearly-activity-chart";
 import { env } from "@/env";
@@ -174,19 +175,27 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
       </header>
 
       {person.mandates.length > 0 ? (
-        <section className="mt-10" aria-labelledby="mandate">
-          <h2 id="mandate" className="label-mono mb-4 text-ink-30">
-            Mandate
-          </h2>
+        <section className="mt-16" aria-labelledby="mandate">
+          <SectionOpener
+            id="mandate"
+            eyebrow="I"
+            title="Mandate"
+            dek={`${formatCount(person.mandates.length)} ${
+              person.mandates.length === 1 ? "mandat parlamentar" : "mandate parlamentare"
+            } în arhivă.`}
+          />
           <MandateList mandates={person.mandates} />
         </section>
       ) : null}
 
       {activityWindow && selectedYear ? (
-        <section className="mt-12" aria-labelledby="activitate">
-          <h2 id="activitate" className="label-mono mb-4 text-ink-30">
-            Activitate
-          </h2>
+        <section className="mt-16" aria-labelledby="activitate">
+          <SectionOpener
+            id="activitate"
+            eyebrow="II"
+            title="Activitate"
+            dek="Discursuri pe an, calendar zilnic de intervenții."
+          />
           {yearlyCounts.length > 1 ? (
             <YearlyActivityChart
               yearlyCounts={yearlyCounts}
@@ -212,22 +221,25 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
           basePath={`/politicieni/${person.slug}`}
           searchParams={discourseSearchParams}
           params={discourseParams}
-          className="mt-12"
+          className="mt-16"
         />
       ) : null}
 
-      <section className="mt-12" aria-labelledby="discursuri-recente">
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-          <h2 id="discursuri-recente" className="label-mono scroll-mt-20 text-ink-30">
-            {speechesHeading}
-          </h2>
-          {filteredSpeechTotal > 0 ? (
-            <span className="font-mono-meta text-xs text-ink-45" data-tabular-nums="">
-              {formatCount(filteredSpeechTotal)}{" "}
-              {filteredSpeechTotal === 1 ? "discurs" : "discursuri"}
-            </span>
-          ) : null}
-        </div>
+      <section className="mt-16" aria-labelledby="discursuri-recente">
+        <SectionOpener
+          id="discursuri-recente"
+          eyebrow="IV"
+          title={speechesHeading}
+          scrollOffset
+          aside={
+            filteredSpeechTotal > 0 ? (
+              <span className="font-mono-meta text-xs text-ink-45" data-tabular-nums="">
+                {formatCount(filteredSpeechTotal)}{" "}
+                {filteredSpeechTotal === 1 ? "discurs" : "discursuri"}
+              </span>
+            ) : null
+          }
+        />
         {recentSpeeches.length === 0 ? (
           <EmptySpeeches selectedDate={selectedDate} selectedYear={year ?? null} />
         ) : (
