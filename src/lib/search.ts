@@ -245,6 +245,59 @@ export async function getSpeech(id: string): Promise<MoSpeech | null> {
   });
 }
 
+// Slug-by-slug speech lookup powering `/discurs/[slug]`. Per the upstream SEO
+// contract (`../monitorul/docs/elasticsearch-indexing.md` §Q7) slugs are
+// persisted slug-once and the server matches on the trailing `<short_id>` only
+// — renamed slug-prefix variants resolve to the canonical record so the caller
+// can 308-redirect to the live URL. Fast path: exact `term` on the keyword
+// `slug` field. Slow path: a leading-`*` `wildcard` bounded to the base32
+// short-id tail and capped with `terminate_after: 1` so it bails on first hit.
+const SHORT_ID_TAIL_RE = /-([a-z2-7]{8,12})$/;
+
+function extractShortId(slug: string): string | null {
+  const m = SHORT_ID_TAIL_RE.exec(slug);
+  return m ? m[1] : null;
+}
+
+export async function getSpeechBySlug(slug: string): Promise<MoSpeech | null> {
+  return timed("getSpeechBySlug", { slug }, async () => {
+    const exact = await esClient().search<MoSpeech>({
+      index: ES_INDEX.speeches,
+      size: 1,
+      query: { term: { slug } },
+      track_total_hits: false,
+    });
+    const exactHit = exact.hits.hits[0];
+    if (exactHit?._source) {
+      return {
+        result: exactHit._source,
+        esTookMs: typeof exact.took === "number" ? exact.took : null,
+        hitsTotal: 1,
+      };
+    }
+    const shortId = extractShortId(slug);
+    if (!shortId) {
+      return { result: null, esTookMs: null, hitsTotal: 0 };
+    }
+    const fallback = await esClient().search<MoSpeech>({
+      index: ES_INDEX.speeches,
+      size: 1,
+      query: { wildcard: { slug: { value: `*-${shortId}` } } },
+      terminate_after: 1,
+      track_total_hits: false,
+    });
+    const fallbackHit = fallback.hits.hits[0];
+    if (!fallbackHit?._source) {
+      return { result: null, esTookMs: null, hitsTotal: 0 };
+    }
+    return {
+      result: fallbackHit._source,
+      esTookMs: typeof fallback.took === "number" ? fallback.took : null,
+      hitsTotal: 1,
+    };
+  });
+}
+
 export async function getReport(id: string): Promise<MoReport | null> {
   return timed("getReport", { id }, async () => {
     try {
