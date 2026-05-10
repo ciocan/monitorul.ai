@@ -52,10 +52,21 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
         // their user_id lives only in mo_query_log on Postgres.
         person_profiles: "never",
 
-        // Only events we explicitly call posthog.capture() for. No automatic
-        // click / scroll / form / pageview tracking.
+        // No autocapture — clicks / scrolls / form-submits never fire
+        // events of their own; every interaction we care about is wrapped
+        // in a typed tracker.
         autocapture: false,
-        capture_pageview: false,
+
+        // Auto-fire `$pageview` on first load AND on every history-change
+        // (Next.js soft-nav). This is the event PostHog Web Analytics and
+        // most default insights consume; without it those dashboards stay
+        // empty even though our typed events stream into the Activity feed
+        // and any custom insight built on them. Disclosure on
+        // /confidentialitate already covers "evenimente anonime de pagină"
+        // — URL + referrer + time — so this doesn't change the privacy
+        // contract; it just lets PostHog read the data we were already
+        // collecting via custom events.
+        capture_pageview: "history_change",
         capture_pageleave: false,
 
         // No DOM recordings under any circumstance.
