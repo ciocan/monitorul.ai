@@ -3,10 +3,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CuprinsMarkerIndicator } from "@/components/discourse/cuprins-marker-indicator";
 import { Dateline } from "@/components/dateline";
+import { DocumentStatStrip } from "@/components/discourse/document-stat-strip";
 import { DocumentStickyHeader } from "@/components/document-sticky-header";
+import { InlineSpeechChip } from "@/components/discourse/inline-speech-chip";
 import { ScrollToHash } from "@/components/scroll-to-hash";
 import { env } from "@/env";
+import { parseDiscourseParams } from "@/lib/discourse-params";
+import {
+  type DocumentDiscourseSummary,
+  summarizeDocumentDiscourse,
+} from "@/lib/document-discourse";
 import {
   agendaCategoryLabel,
   agendaOutcomeLabel,
@@ -44,6 +52,7 @@ interface RouteParams {
 
 interface PageProps {
   params: Promise<RouteParams>;
+  searchParams: Promise<{ voice?: string; conf?: string }>;
 }
 
 function recordIdFromParams(p: RouteParams): string {
@@ -58,7 +67,11 @@ async function loadDocument(p: RouteParams): Promise<MoDocument | null> {
   return getDocument(recordIdFromParams(p));
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<RouteParams>;
+}): Promise<Metadata> {
   const p = await params;
   const doc = await loadDocument(p);
   const canonical = canonicalPathFromParams(p);
@@ -85,12 +98,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function DocumentPage({ params }: PageProps) {
-  const p = await params;
+export default async function DocumentPage({ params, searchParams }: PageProps) {
+  const [p, sp] = await Promise.all([params, searchParams]);
   const doc = await loadDocument(p);
   if (!doc) notFound();
 
   const { agenda, children } = await listDocumentChildren(doc.document_id);
+  const discourseParams = parseDiscourseParams(sp);
+  const discourseSummary = summarizeDocumentDiscourse(children, discourseParams);
+  const discourseSearchParams = new URLSearchParams();
+  if (discourseParams.voiceMode === "all") discourseSearchParams.set("voice", "all");
+  if (discourseParams.confidenceMin === 0.7) discourseSearchParams.set("conf", "07");
   const sessionDate = formatDate(doc.session_date);
   const publishedDate = formatDate(doc.published);
   const hasBody = children.some((c) => c.grain !== "agenda-items");
@@ -153,11 +171,25 @@ export default async function DocumentPage({ params }: PageProps) {
         {pdfHref ? <PdfDownloadLink href={pdfHref} /> : null}
       </header>
 
+      {discourseSummary.codedCount > 0 ? (
+        <DocumentStatStrip
+          summary={discourseSummary}
+          basePath={canonicalPathFromParams(p)}
+          searchParams={discourseSearchParams}
+          params={discourseParams}
+          className="mt-10"
+        />
+      ) : null}
+
       <section className="mt-10" aria-labelledby="cuprins">
         <h2 id="cuprins" className="label-mono mb-4 text-ink-30">
           Cuprins
         </h2>
-        {agenda.length === 0 ? <EmptyAgenda /> : <AgendaList agenda={agenda} />}
+        {agenda.length === 0 ? (
+          <EmptyAgenda />
+        ) : (
+          <AgendaList agenda={agenda} discourseSummary={discourseSummary} />
+        )}
       </section>
 
       {hasBody ? (
@@ -165,7 +197,7 @@ export default async function DocumentPage({ params }: PageProps) {
           <h2 id="stenograma" className="label-mono mb-6 text-ink-30">
             {bodyHeading}
           </h2>
-          <DocumentBody entries={children} />
+          <DocumentBody entries={children} discourseSummary={discourseSummary} />
         </section>
       ) : null}
 
@@ -269,7 +301,13 @@ function PdfDownloadLink({ href }: { href: string }) {
   );
 }
 
-function AgendaList({ agenda }: { agenda: MoAgendaItem[] }) {
+function AgendaList({
+  agenda,
+  discourseSummary,
+}: {
+  agenda: MoAgendaItem[];
+  discourseSummary: DocumentDiscourseSummary;
+}) {
   return (
     <ol className="divide-y divide-border border-y border-border">
       {agenda.map((item) => {
@@ -277,6 +315,7 @@ function AgendaList({ agenda }: { agenda: MoAgendaItem[] }) {
         // phase. Until then, jumping to the inline section keeps the Cuprins
         // useful as a table of contents.
         const href = `#agenda-${item.ordinal}`;
+        const agendaDiscourse = discourseSummary.perAgenda.get(item.ordinal);
         return (
           <li key={item.record_id}>
             <Link
@@ -294,7 +333,7 @@ function AgendaList({ agenda }: { agenda: MoAgendaItem[] }) {
                   <p className="text-base font-semibold leading-snug text-ink-16 group-hover/row:underline underline-offset-4">
                     {item.title}
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 label-mono text-ink-45">
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 label-mono text-ink-45">
                     {agendaCategoryLabel(item.category) ? (
                       <span>{agendaCategoryLabel(item.category)}</span>
                     ) : null}
@@ -311,6 +350,7 @@ function AgendaList({ agenda }: { agenda: MoAgendaItem[] }) {
                         )}
                       </span>
                     ) : null}
+                    {agendaDiscourse ? <CuprinsMarkerIndicator summary={agendaDiscourse} /> : null}
                   </div>
                 </div>
               </div>
@@ -326,7 +366,13 @@ function AgendaList({ agenda }: { agenda: MoAgendaItem[] }) {
 // `position_in_document` ASC, so each agenda item appears immediately before
 // its speeches / votes / interpellations / questions. We open a new section at
 // every agenda boundary; everything else gets a grain-specific block.
-function DocumentBody({ entries }: { entries: ChildGrainHit[] }) {
+function DocumentBody({
+  entries,
+  discourseSummary,
+}: {
+  entries: ChildGrainHit[];
+  discourseSummary: DocumentDiscourseSummary;
+}) {
   type Section = { agenda: MoAgendaItem | null; entries: ChildGrainHit[] };
   const sections: Section[] = [];
   let current: Section | null = null;
@@ -349,6 +395,7 @@ function DocumentBody({ entries }: { entries: ChildGrainHit[] }) {
           key={section.agenda?.record_id ?? `orphan-${i}`}
           agenda={section.agenda}
           entries={section.entries}
+          discourseSummary={discourseSummary}
         />
       ))}
     </div>
@@ -358,9 +405,11 @@ function DocumentBody({ entries }: { entries: ChildGrainHit[] }) {
 function AgendaSection({
   agenda,
   entries,
+  discourseSummary,
 }: {
   agenda: MoAgendaItem | null;
   entries: ChildGrainHit[];
+  discourseSummary: DocumentDiscourseSummary;
 }) {
   const speechCount = entries.filter((e) => e.grain === "speeches").length;
   const anchorId = agenda ? `agenda-${agenda.ordinal}` : undefined;
@@ -398,17 +447,23 @@ function AgendaSection({
       ) : null}
       <ol className="mt-6 divide-y divide-border border-y border-border">
         {entries.map((entry) => (
-          <BodyEntry key={entry.record_id} entry={entry} />
+          <BodyEntry key={entry.record_id} entry={entry} discourseSummary={discourseSummary} />
         ))}
       </ol>
     </section>
   );
 }
 
-function BodyEntry({ entry }: { entry: ChildGrainHit }) {
+function BodyEntry({
+  entry,
+  discourseSummary,
+}: {
+  entry: ChildGrainHit;
+  discourseSummary: DocumentDiscourseSummary;
+}) {
   switch (entry.grain) {
     case "speeches":
-      return <SpeechBlock speech={entry} />;
+      return <SpeechBlock speech={entry} discourseSummary={discourseSummary} />;
     case "votes":
       return <VoteBlock vote={entry} />;
     case "interpellations":
@@ -429,13 +484,20 @@ function speakerLine(speech: MoSpeech): string {
   return title ? `${title} ${name}` : name;
 }
 
-function SpeechBlock({ speech }: { speech: MoSpeech }) {
+function SpeechBlock({
+  speech,
+  discourseSummary,
+}: {
+  speech: MoSpeech;
+  discourseSummary: DocumentDiscourseSummary;
+}) {
   const anchorId = `discurs-${speech.position_in_document ?? speech.position_in_agenda}`;
   const meta = [
     speech.speaker.role,
     speech.speaker.party_group_at_time,
     speech.speaker.delivery_mode === "written" ? "intervenție scrisă" : null,
   ].filter(Boolean);
+  const speechDiscourse = discourseSummary.perSpeech.get(speech.record_id);
   // `speaker.person_id` is the same string as the person record's `slug` —
   // both are minted upstream from the canonical name. Verified against the
   // live `mo-persons` index. Today only ~20% of speeches have person_id
@@ -475,7 +537,10 @@ function SpeechBlock({ speech }: { speech: MoSpeech }) {
           </Link>
         ) : null}
       </div>
-      {meta.length > 0 ? <p className="mt-1 label-mono text-ink-45">{meta.join(" · ")}</p> : null}
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {meta.length > 0 ? <p className="label-mono text-ink-45">{meta.join(" · ")}</p> : null}
+        {speechDiscourse ? <InlineSpeechChip summary={speechDiscourse} /> : null}
+      </div>
       {speech.text ? (
         <div className="mt-3 max-w-prose space-y-3 text-base leading-relaxed text-ink-30">
           {speech.text

@@ -92,6 +92,43 @@ const truthyFlag = firstString.transform((v) => v === "1" || v === "true");
 // Speaker / party slugs are URL-safe single tokens. Empty string = no filter.
 const slugString = firstString.transform((v) => (v.length > 0 && v.length <= 120 ? v : ""));
 
+// Comma-separated 0/1/2 list for the discourse score filter. Used for both
+// `?hawkins=` and `?vparty=`. Bad / out-of-range tokens drop silently.
+const HV_SCORE_LIST = firstString.transform((v) => {
+  if (!v) return [] as Array<0 | 1 | 2>;
+  const seen = new Set<number>();
+  const out: Array<0 | 1 | 2> = [];
+  for (const t of v.split(",")) {
+    const n = Number.parseInt(t.trim(), 10);
+    if (n === 0 || n === 1 || n === 2) {
+      if (!seen.has(n)) {
+        seen.add(n);
+        out.push(n as 0 | 1 | 2);
+      }
+    }
+  }
+  return out;
+});
+
+// Single integer 1/2/3 for the DQI level threshold (level_of_justification
+// `>=`). 0 maps to "no filter" so the chip-toggle can de-select cleanly.
+const DQI_LEVEL = firstString.transform((v): 1 | 2 | 3 | null => {
+  const n = Number.parseInt(v, 10);
+  if (n === 1 || n === 2 || n === 3) return n;
+  return null;
+});
+
+// Voice mode chip from the discourse-UI rollout. Only "all" is a non-default
+// value; everything else (empty, "first-person", anything else) parses as
+// the default "first-person".
+const VOICE_MODE = firstString.transform((v): "first-person" | "all" =>
+  v === "all" ? "all" : "first-person",
+);
+
+// Confidence chip — only "07" is honored as a non-default. Anything else
+// parses as `null` (no threshold).
+const CONFIDENCE_MIN = firstString.transform((v): number | null => (v === "07" ? 0.7 : null));
+
 const Schema = z.object({
   q: firstString,
   page: pageInt,
@@ -107,6 +144,12 @@ const Schema = z.object({
   party: slugString,
   procedural: truthyFlag,
   sort: sortSlug,
+  // Discourse-UI Phase 5 chips.
+  hawkins: HV_SCORE_LIST,
+  vparty: HV_SCORE_LIST,
+  dqi: DQI_LEVEL,
+  voice: VOICE_MODE,
+  conf: CONFIDENCE_MIN,
 });
 
 export interface CautaSearchParams {
@@ -129,6 +172,14 @@ export interface CautaSearchParams {
   // to the search layer's `isSubstantive: true` default.
   includeProcedural: boolean;
   sort: SortSlug;
+  // Phase 5 discourse filters — see CLAUDE.md "Search rule" + the
+  // `searchSpeeches` filter primitives in `src/lib/search.ts` (already exists
+  // since the discourse layer was indexed).
+  hawkinsScores: Array<0 | 1 | 2>;
+  vpartyScores: Array<0 | 1 | 2>;
+  dqiLevelMin: 1 | 2 | 3 | null;
+  voiceMode: "first-person" | "all";
+  confidenceMin: number | null;
 }
 
 export function parseCautaSearchParams(raw: RawSearchParams): CautaSearchParams {
@@ -144,6 +195,11 @@ export function parseCautaSearchParams(raw: RawSearchParams): CautaSearchParams 
     partySlug: parsed.party,
     includeProcedural: parsed.procedural,
     sort: parsed.sort,
+    hawkinsScores: parsed.hawkins,
+    vpartyScores: parsed.vparty,
+    dqiLevelMin: parsed.dqi,
+    voiceMode: parsed.voice,
+    confidenceMin: parsed.conf,
   };
 }
 
@@ -174,6 +230,15 @@ export function buildCautaHref(
   if (merged.partySlug) sp.set("party", merged.partySlug);
   if (merged.includeProcedural) sp.set("procedural", "1");
   if (merged.sort !== "relevance") sp.set("sort", merged.sort);
+  if (merged.hawkinsScores.length > 0) {
+    sp.set("hawkins", [...merged.hawkinsScores].sort((a, b) => a - b).join(","));
+  }
+  if (merged.vpartyScores.length > 0) {
+    sp.set("vparty", [...merged.vpartyScores].sort((a, b) => a - b).join(","));
+  }
+  if (merged.dqiLevelMin !== null) sp.set("dqi", String(merged.dqiLevelMin));
+  if (merged.voiceMode === "all") sp.set("voice", "all");
+  if (merged.confidenceMin === 0.7) sp.set("conf", "07");
   if (merged.page > 1) sp.set("page", String(merged.page));
   const qs = sp.toString();
   return qs ? `/cauta?${qs}` : "/cauta";
@@ -190,5 +255,10 @@ export function activeFilterCount(p: CautaSearchParams): number {
   if (p.speakerSlug) n += 1;
   if (p.partySlug) n += 1;
   if (p.includeProcedural) n += 1;
+  if (p.hawkinsScores.length > 0) n += 1;
+  if (p.vpartyScores.length > 0) n += 1;
+  if (p.dqiLevelMin !== null) n += 1;
+  if (p.voiceMode === "all") n += 1;
+  if (p.confidenceMin !== null) n += 1;
   return n;
 }

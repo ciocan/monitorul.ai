@@ -117,38 +117,143 @@ export interface MoSpeech extends CommonFields {
      * and the retrieval-time guide at `../monitorul/docs/discourse-and-semantic-search.md`.
      * Sparse: only populated for substantive speeches that have been
      * coded by `monitorul-ii analyze`.
+     *
+     * Two layers in one object:
+     *  - **Aggregates** (`score`, `framework_confidence`, `marker_count`,
+     *    `marker_kinds`, `dominant_voice`, the six DQI sub-codings) are
+     *    indexed as ES fields and queryable via the filter primitives in
+     *    `searchSpeeches`.
+     *  - **Markers / classifications / rationale** ride inside `_source`
+     *    only — they are not indexed for filtering but round-trip on every
+     *    `getSpeech` / `getSpeechBySlug` call. The frontend uses them to
+     *    render the inline-highlight + side-panel pattern documented in
+     *    `discourse-and-semantic-search.md` lines 382–429.
      */
-    discourse?: {
-      hawkins?: {
-        score: 0 | 1 | 2;
-        framework_confidence: number;
-        marker_count: number;
-        marker_kinds?: string[];
-      };
-      vparty?: {
-        score: 0 | 1 | 2;
-        framework_confidence: number;
-        marker_count: number;
-        marker_kinds?: string[];
-      };
-      voice?: {
-        dominant_voice: string;
-        voices_seen: string[];
-      };
-      dqi?: {
-        level_of_justification: 0 | 1 | 2 | 3;
-        content_of_justification: "none" | "group_interest" | "common_good" | "mixed";
-        respect_for_groups: 0 | 1 | 2;
-        respect_for_demands: 0 | 1 | 2;
-        respect_for_counterarguments: 0 | 1 | 2;
-        constructive_politics: "positional" | "alternative_proposal" | "mediating_proposal";
-      };
-    };
+    discourse?: DiscourseEnrichment;
     discourse_producer?: string;
     discourse_text_fingerprint?: string;
   };
   slug: string;
   url_path: string;
+}
+
+// ---------------------------------------------------------------------------
+// Discourse-analysis shapes (per `../monitorul/docs/discourse-analysis-schema.md`).
+
+export type DiscourseFramework = "hawkins" | "vparty" | "dqi" | "voice";
+
+// The closed voice enum lifted from
+// `../monitorul/docs/discourse-analysis-schema.md` Q5. The default value when
+// the producer didn't emit a per-marker voice is `speaker_first_person`.
+export type DiscourseVoice =
+  | "speaker_first_person"
+  | "quoted"
+  | "reported"
+  | "negated"
+  | "hypothetical"
+  | "apophasis_disclaimed"
+  | "weasel_attribution"
+  | "sarcastic"
+  | "interrogative"
+  | "uncertain";
+
+// `char_range` is a half-open `[start, end)` byte slice into the parent
+// `MoSpeech.text`. The producer's `find_text_offsets_tolerant` runs at index
+// time so curly quotes / dashes / ellipsis paraphrases land byte-correct
+// against `text`. May be absent when the model genuinely paraphrased the
+// evidence; the renderer falls back to `text.indexOf(evidence.text)` and
+// renders the imperfect match.
+export interface DiscourseEvidence {
+  text: string;
+  char_range?: [number, number] | null;
+}
+
+interface DiscourseMarkerCommon {
+  // Optional; some producers stamp `id: "m_<index>"` per marker, others rely
+  // on positional index. The renderer derives "m_<position>" when absent.
+  id?: string | null;
+  marker_confidence?: number | null;
+  framework_confidence?: number | null;
+  rationale_short?: string | null;
+  evidence: DiscourseEvidence;
+  voice?: DiscourseVoice | null;
+  voice_confidence?: number | null;
+  attributed_to?: string | null;
+}
+
+// Hawkins / V-Party share a marker shape: `kind` is a closed enum per
+// framework (e.g. `people_vs_elite` for Hawkins, `judiciary_attack` for
+// V-Party). Voice on these markers comes from the voice classifier when
+// it ran (Hawkins-marker triggered) or defaults to `speaker_first_person`.
+export interface DiscourseHvMarker extends DiscourseMarkerCommon {
+  kind: string;
+  target?: string | null;
+}
+
+// DQI markers carry a stringified `value` per kind because DQI is multi-axis
+// (categorical content_of_justification + 0–3 level_of_justification).
+export interface DiscourseDqiMarker extends DiscourseMarkerCommon {
+  kind:
+    | "level_of_justification"
+    | "content_of_justification"
+    | "respect_for_groups"
+    | "respect_for_demands"
+    | "respect_for_counterarguments"
+    | "constructive_politics";
+  value: string;
+}
+
+export interface DiscourseFrameworkBlock<TMarker> {
+  // The framework's holistic score, in its native unit. Hawkins / V-Party are
+  // ordinal 0/1/2; DQI doesn't use this field (it has six sub-codings
+  // instead).
+  score?: 0 | 1 | 2 | null;
+  framework_confidence: number;
+  framework_version?: string | null;
+  marker_count: number;
+  marker_kinds?: string[];
+  rationale?: string | null;
+  // The full marker list. Carried inside `_source` (not indexed for filter).
+  markers?: TMarker[];
+}
+
+export interface DqiBlock {
+  level_of_justification: 0 | 1 | 2 | 3;
+  content_of_justification: "none" | "group_interest" | "common_good" | "mixed";
+  respect_for_groups: 0 | 1 | 2;
+  respect_for_demands: 0 | 1 | 2;
+  respect_for_counterarguments: 0 | 1 | 2;
+  constructive_politics: "positional" | "alternative_proposal" | "mediating_proposal";
+  framework_confidence: number;
+  framework_version?: string | null;
+  rationale?: string | null;
+  markers?: DiscourseDqiMarker[];
+}
+
+export interface DiscourseVoiceClassification {
+  // Position-based id (`m_0`, `m_1`, …) into the *Hawkins* `markers[]` array,
+  // since voice runs only over Hawkins-emitted markers in v0.1 of the
+  // pipeline. Frontend that wants per-marker voice on V-Party markers
+  // defaults to `speaker_first_person`.
+  marker_id: string;
+  voice: DiscourseVoice;
+  voice_confidence: number;
+  attributed_to?: string | null;
+  rationale_short?: string | null;
+  voice_evidence?: DiscourseEvidence | null;
+}
+
+export interface VoiceBlock {
+  dominant_voice: DiscourseVoice;
+  voices_seen: DiscourseVoice[];
+  classifications?: DiscourseVoiceClassification[];
+}
+
+export interface DiscourseEnrichment {
+  hawkins?: DiscourseFrameworkBlock<DiscourseHvMarker>;
+  vparty?: DiscourseFrameworkBlock<DiscourseHvMarker>;
+  voice?: VoiceBlock;
+  dqi?: DqiBlock;
 }
 
 export interface VoteCounts {
@@ -326,6 +431,145 @@ export interface SearchResult<T> {
 export interface PersonActivityDay {
   date: string; // YYYY-MM-DD
   count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Discourse trajectory shapes (drives the politician page chart panel — Phase 2
+// of the discourse-UI rollout). Per the Q5 grill decision: framework tabs +
+// aggregate band + speech-dot scatter, one framework at a time. The payload
+// computed by `personDiscourseTrajectory` carries everything the panel needs
+// in a single ES round-trip.
+
+export interface DiscourseTrajectoryMonth {
+  // "YYYY-MM" key for the month, sortable lexicographically.
+  month: string;
+  // Counts of *coded* substantive speeches in this month, broken down by
+  // each framework's score. `dqi` carries the level_of_justification 0/1/2/3
+  // breakdown rather than the 0/1/2 score (DQI is multi-axis; the level is
+  // the single most informative scalar).
+  hawkins: { 0: number; 1: number; 2: number };
+  vparty: { 0: number; 1: number; 2: number };
+  dqi: { 0: number; 1: number; 2: number; 3: number };
+  // Total *coded* speeches in this month — denominator for the rate framing.
+  codedTotal: number;
+}
+
+export interface DiscourseSpeechDot {
+  recordId: string;
+  url: string;
+  sessionDate: string; // YYYY-MM-DD
+  // The five values we plot. Any may be null when the framework didn't fire.
+  hScore: 0 | 1 | 2 | null;
+  vScore: 0 | 1 | 2 | null;
+  dqiLevel: 0 | 1 | 2 | 3 | null;
+  dominantVoice: DiscourseVoice | null;
+  // Hawkins's marker_count is the natural "how dense was the populist
+  // language" proxy and drives the dot size.
+  hawkinsMarkerCount: number;
+  vpartyMarkerCount: number;
+  hawkinsConfidence: number | null;
+  vpartyConfidence: number | null;
+}
+
+export interface DiscourseTopMarker {
+  framework: DiscourseFramework;
+  kind: string;
+  count: number;
+}
+
+export interface DiscourseVoiceMix {
+  // Per-voice share (0..1) over the selected window. Used by the Voce tab's
+  // stacked-area chart.
+  month: string;
+  totals: Partial<Record<DiscourseVoice, number>>;
+  total: number;
+}
+
+export interface DiscourseCoverage {
+  totalSubstantive: number;
+  codedSubstantive: number;
+  firstCodedDate: string | null;
+  lastCodedDate: string | null;
+  firstSubstantiveDate: string | null;
+  lastSubstantiveDate: string | null;
+  // Per-year coded fraction across the politician's career — drives the
+  // greyed-band overlay on the trajectory chart.
+  yearly: Array<{ year: number; total: number; coded: number }>;
+}
+
+export interface PersonDiscourseTrajectoryPayload {
+  personId: string;
+  // The year the chart is currently rendering. Derived from `?year=` or
+  // defaults to the most recent year with coded speeches for this politician.
+  selectedYear: number;
+  monthly: DiscourseTrajectoryMonth[];
+  speechDots: DiscourseSpeechDot[];
+  voiceMix: DiscourseVoiceMix[];
+  topMarkerKinds: DiscourseTopMarker[];
+  coverage: DiscourseCoverage;
+  producerLabel: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// /statistici — Phase 4 stats-page payloads.
+
+export interface DiscourseSystemMonth {
+  // "YYYY-MM"
+  month: string;
+  total: number;
+  hge1: number;
+  vge1: number;
+  hge2: number;
+  vge2: number;
+}
+
+export interface DiscourseSystemTimeSeries {
+  year: number;
+  monthly: DiscourseSystemMonth[];
+}
+
+export interface DiscourseHvCrosstabCell {
+  h: 0 | 1 | 2;
+  v: 0 | 1 | 2;
+  count: number;
+}
+
+export interface DiscourseHvCrosstab {
+  year: number;
+  total: number;
+  cells: DiscourseHvCrosstabCell[];
+  // The "illiberal cluster" cell count (H=2 + V≥1) — for the panel headline.
+  illiberalCount: number;
+}
+
+export interface DiscourseTopPolitician {
+  personId: string;
+  name: string;
+  speechCount: number;
+  ge1Count: number;
+  ge1Rate: number;
+  // Wilson 95% CI on the rate. Frontend renders the bracket; methodology
+  // disclaimer notes the approximation.
+  ciLow: number;
+  ciHigh: number;
+}
+
+export interface DiscourseTopPoliticiansPayload {
+  axis: "hawkins" | "vparty" | "dqi";
+  year: number;
+  rows: DiscourseTopPolitician[];
+}
+
+export interface DiscourseMarkerTreemapItem {
+  framework: DiscourseFramework;
+  kind: string;
+  count: number;
+}
+
+export interface DiscourseMarkerTreemap {
+  year: number;
+  items: DiscourseMarkerTreemapItem[];
+  total: number;
 }
 
 export interface PersonActivityWindow {

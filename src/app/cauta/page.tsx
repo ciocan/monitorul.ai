@@ -176,6 +176,9 @@ async function SearchResults({
     speakerPartyRaw,
     isSubstantive: !params.includeProcedural,
     sort: params.sort,
+    hawkinsScores: params.hawkinsScores.length > 0 ? params.hawkinsScores : undefined,
+    vpartyScores: params.vpartyScores.length > 0 ? params.vpartyScores : undefined,
+    dqiLevelMin: params.dqiLevelMin ?? undefined,
   });
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const safePage = Math.min(params.page, totalPages);

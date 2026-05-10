@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/mo", label: "Sesiuni" },
   { href: "/politicieni", label: "Politicieni" },
   { href: "/comisii", label: "Comisii" },
+  { href: "/statistici", label: "Statistici" },
   { href: "/despre", label: "Despre" },
   // Bracketed mono — the brackets are the affordance. Print-masthead idiom
   // (a service tag set off from the section list typographically, not by

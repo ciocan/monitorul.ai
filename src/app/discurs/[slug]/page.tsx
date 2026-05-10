@@ -4,8 +4,13 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 
 import { Dateline } from "@/components/dateline";
+import { DiscourseSidePanel } from "@/components/discourse/discourse-side-panel";
+import { InlineMarkerOverlay } from "@/components/discourse/inline-marker-overlay";
+import { SpeechDiscourseSummary } from "@/components/discourse/speech-discourse-summary";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { env } from "@/env";
+import { parseDiscourseParams } from "@/lib/discourse-params";
+import { prepareOverlay } from "@/lib/discourse-markers";
 import {
   agendaCategoryLabel,
   agendaOutcomeLabel,
@@ -31,6 +36,7 @@ interface RouteParams {
 
 interface PageProps {
   params: Promise<RouteParams>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 interface DocCoord {
@@ -59,7 +65,11 @@ function deliveryModeLabel(mode: string | null | undefined): string | null {
   return mode;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<RouteParams>;
+}): Promise<Metadata> {
   const { slug } = await params;
   const speech = await getSpeechBySlug(slug);
   const canonical = speech ? speech.url_path : `/discurs/${slug}`;
@@ -90,10 +100,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function SpeechPage({ params }: PageProps) {
-  const { slug } = await params;
+export default async function SpeechPage({ params, searchParams }: PageProps) {
+  const [{ slug }, rawSearch] = await Promise.all([params, searchParams]);
   const speech = await getSpeechBySlug(slug);
   if (!speech) notFound();
+  const discourseParams = parseDiscourseParams(rawSearch);
+  const sp = new URLSearchParams();
+  if (discourseParams.voiceMode === "all") sp.set("voice", "all");
+  if (discourseParams.confidenceMin === 0.7) sp.set("conf", "07");
+  const overlay = prepareOverlay(speech, discourseParams);
+  const discourse = speech.enrichments?.discourse ?? null;
+  const producerLabel = speech.enrichments?.discourse_producer ?? null;
   // Slug-once: when the requested slug differs from the canonical one persisted
   // upstream, 308-redirect so search engines collapse the variant. The server
   // matches on the trailing `<short_id>` only (see `getSpeechBySlug` fallback);
@@ -181,16 +198,49 @@ export default async function SpeechPage({ params }: PageProps) {
         </div>
       </header>
 
+      {discourse ? (
+        <section className="mt-10" aria-labelledby="discurs-summary">
+          <h2 id="discurs-summary" className="label-mono mb-3 text-ink-30">
+            Analiza discursului
+          </h2>
+          <SpeechDiscourseSummary discourse={discourse} producerLabel={producerLabel} />
+        </section>
+      ) : null}
+
       <section className="mt-10" aria-labelledby="discurs">
         <h2 id="discurs" className="label-mono mb-6 text-ink-30">
           Discurs
         </h2>
-        {speech.text ? (
-          <div className="max-w-prose space-y-4 text-base leading-relaxed text-ink-30">
-            {speech.text
-              .split(/\n\n+/)
-              .map((para, i) => (para.trim() ? <p key={i}>{para.trim()}</p> : null))}
+        {discourse && speech.text ? (
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <InlineMarkerOverlay paragraphs={overlay.paragraphs} />
+            <DiscourseSidePanel
+              markers={overlay.visibleMarkers}
+              totalMarkers={overlay.totalMarkers}
+              basePath={speech.url_path}
+              searchParams={sp}
+              params={discourseParams}
+            />
           </div>
+        ) : speech.text ? (
+          <>
+            <div className="max-w-prose space-y-4 text-base leading-relaxed text-ink-30">
+              {speech.text
+                .split(/\n\n+/)
+                .map((para, i) => (para.trim() ? <p key={i}>{para.trim()}</p> : null))}
+            </div>
+            <p className="mt-6 max-w-prose text-xs leading-relaxed text-ink-45">
+              Acest discurs nu este încă acoperit de analiza de discurs (acoperire curentă: martie
+              2023 →).{" "}
+              <Link
+                href="/despre#discurs-analiza"
+                className="underline decoration-paper-91 underline-offset-2 hover:text-ink-30 hover:decoration-ink-30"
+              >
+                Vezi metodologia
+              </Link>
+              .
+            </p>
+          </>
         ) : (
           <p className="max-w-prose text-sm leading-relaxed text-ink-45">
             Textul stenogramei nu este disponibil pentru această intervenție.

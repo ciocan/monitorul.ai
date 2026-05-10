@@ -76,6 +76,41 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
     });
   }
 
+  for (const score of [...params.hawkinsScores].sort((a, b) => a - b)) {
+    chips.push({
+      label: `H = ${score}`,
+      href: buildCautaHref(params, {
+        hawkinsScores: params.hawkinsScores.filter((s) => s !== score),
+      }),
+    });
+  }
+  for (const score of [...params.vpartyScores].sort((a, b) => a - b)) {
+    chips.push({
+      label: `V = ${score}`,
+      href: buildCautaHref(params, {
+        vpartyScores: params.vpartyScores.filter((s) => s !== score),
+      }),
+    });
+  }
+  if (params.dqiLevelMin !== null) {
+    chips.push({
+      label: `DQI ≥ L${params.dqiLevelMin}`,
+      href: buildCautaHref(params, { dqiLevelMin: null }),
+    });
+  }
+  if (params.voiceMode === "all") {
+    chips.push({
+      label: "Toate vocile",
+      href: buildCautaHref(params, { voiceMode: "first-person" }),
+    });
+  }
+  if (params.confidenceMin !== null) {
+    chips.push({
+      label: "Doar codări ≥ 0.7",
+      href: buildCautaHref(params, { confidenceMin: null }),
+    });
+  }
+
   return (
     <ul className="mt-4 flex flex-wrap items-center gap-2" aria-label="Filtre active">
       <li className="label-mono text-ink-45">Filtre active</li>
@@ -104,6 +139,11 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
             speakerSlug: "",
             partySlug: "",
             includeProcedural: false,
+            hawkinsScores: [],
+            vpartyScores: [],
+            dqiLevelMin: null,
+            voiceMode: "first-person",
+            confidenceMin: null,
           })}
           className="label-mono text-ink-45 underline decoration-paper-91 underline-offset-4 transition-colors hover:decoration-ink-30 hover:text-ink-30"
         >

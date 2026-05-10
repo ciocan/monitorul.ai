@@ -1,6 +1,10 @@
 import "server-only";
 
-import type { QueryDslQueryContainer, SearchRequest } from "@elastic/elasticsearch/lib/api/types";
+import type {
+  AggregationsAggregationContainer,
+  QueryDslQueryContainer,
+  SearchRequest,
+} from "@elastic/elasticsearch/lib/api/types";
 import { after } from "next/server";
 
 import { env } from "@/env";
@@ -14,6 +18,15 @@ import type {
   CommitteeRankRow,
   CommitteeYearCount,
   CommitteesIndexPayload,
+  DiscourseHvCrosstab,
+  DiscourseHvCrosstabCell,
+  DiscourseMarkerTreemap,
+  DiscourseSpeechDot,
+  DiscourseSystemMonth,
+  DiscourseSystemTimeSeries,
+  DiscourseTopPoliticiansPayload,
+  DiscourseTrajectoryMonth,
+  DiscourseVoice,
   Grain,
   MoAgendaItem,
   MoCommitteeMeeting,
@@ -26,6 +39,7 @@ import type {
   MoVote,
   PersonActivityDay,
   PersonActivityWindow,
+  PersonDiscourseTrajectoryPayload,
   PersonPagePayload,
   PersonStats,
   PersonYearCount,
@@ -1977,6 +1991,759 @@ export async function personPage(
       };
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Discourse trajectory (Phase 2 of the discourse-UI rollout). Drives the
+// politician page's framework-tab chart. The function fans out four parallel
+// ES queries:
+//   1. Career-wide coverage agg — per-year totals + per-year coded counts.
+//      Used by the greyed pre-coding band on the trajectory chart.
+//   2. Per-month aggregation for the selected year — coded speeches binned
+//      by H/V/DQI score buckets, plus the dominant_voice mix.
+//   3. Top marker kinds in the selected year — feeds the marker-kind chips.
+//   4. Speech-dots fetch — per-speech minimal payload for the scatter (cap
+//      MAX_SPEECH_DOTS).
+//
+// Voice + confidence filters apply to (2), (3), (4) — never to (1) (coverage
+// is a structural fact about what's been coded, regardless of how the chart's
+// chips filter it).
+
+export interface PersonDiscourseTrajectoryOptions {
+  year?: number;
+  voiceMode?: "first-person" | "all";
+  confidenceMin?: number | null;
+}
+
+const MAX_SPEECH_DOTS = 2000;
+const MAX_TOP_MARKERS = 10;
+
+const DISCOURSE_VOICES: DiscourseVoice[] = [
+  "speaker_first_person",
+  "quoted",
+  "reported",
+  "negated",
+  "hypothetical",
+  "apophasis_disclaimed",
+  "weasel_attribution",
+  "sarcastic",
+  "interrogative",
+  "uncertain",
+];
+
+interface DiscourseDotSource {
+  record_id: string;
+  url_path: string;
+  session_date: string | null;
+  enrichments?: {
+    discourse?: {
+      hawkins?: {
+        score?: number;
+        framework_confidence?: number;
+        marker_count?: number;
+      };
+      vparty?: {
+        score?: number;
+        framework_confidence?: number;
+        marker_count?: number;
+      };
+      dqi?: { level_of_justification?: number };
+      voice?: { dominant_voice?: string };
+    };
+    discourse_producer?: string;
+  };
+}
+
+function buildDiscourseFilters(
+  personId: string,
+  voiceMode: "first-person" | "all",
+  range: { gte: string; lte: string } | null,
+): QueryDslQueryContainer[] {
+  const filters: QueryDslQueryContainer[] = [
+    { term: { "speaker.person_id": personId } },
+    { term: { is_substantive: true } },
+    { exists: { field: "enrichments.discourse" } },
+  ];
+  if (range) filters.push({ range: { session_date: range } });
+  if (voiceMode === "first-person") {
+    filters.push({
+      term: { "enrichments.discourse.voice.dominant_voice": "speaker_first_person" },
+    });
+  }
+  return filters;
+}
+
+export async function personDiscourseTrajectory(
+  personId: string,
+  opts: PersonDiscourseTrajectoryOptions = {},
+): Promise<PersonDiscourseTrajectoryPayload | null> {
+  return timed("personDiscourseTrajectory", { personId, ...opts }, async () => {
+    const voiceMode = opts.voiceMode ?? "first-person";
+    const confidenceMin = opts.confidenceMin ?? null;
+    // Coverage agg — career-wide. Voice and confidence chips don't gate it.
+    const coverageReq = esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: {
+        bool: {
+          filter: [{ term: { "speaker.person_id": personId } }, { term: { is_substantive: true } }],
+        },
+      },
+      aggs: {
+        first_substantive: { min: { field: "session_date" } },
+        last_substantive: { max: { field: "session_date" } },
+        per_year_total: {
+          date_histogram: {
+            field: "session_date",
+            calendar_interval: "year",
+            format: "yyyy",
+            min_doc_count: 1,
+          },
+          aggs: {
+            coded: { filter: { exists: { field: "enrichments.discourse" } } },
+          },
+        },
+        coded_total: { filter: { exists: { field: "enrichments.discourse" } } },
+        first_coded: {
+          filter: { exists: { field: "enrichments.discourse" } },
+          aggs: { v: { min: { field: "session_date" } } },
+        },
+        last_coded: {
+          filter: { exists: { field: "enrichments.discourse" } },
+          aggs: { v: { max: { field: "session_date" } } },
+        },
+      },
+    });
+    const coverageRes = await coverageReq;
+    const cov = coverageRes.aggregations as
+      | {
+          first_substantive: { value_as_string?: string };
+          last_substantive: { value_as_string?: string };
+          per_year_total: {
+            buckets: Array<{
+              key_as_string: string;
+              doc_count: number;
+              coded: { doc_count: number };
+            }>;
+          };
+          coded_total: { doc_count: number };
+          first_coded: { doc_count: number; v: { value_as_string?: string } };
+          last_coded: { doc_count: number; v: { value_as_string?: string } };
+        }
+      | undefined;
+    const yearly = (cov?.per_year_total.buckets ?? []).map((b) => ({
+      year: Number.parseInt(b.key_as_string, 10),
+      total: b.doc_count,
+      coded: b.coded.doc_count,
+    }));
+    const totalSubstantive = yearly.reduce((acc, y) => acc + y.total, 0);
+    const codedSubstantive = cov?.coded_total.doc_count ?? 0;
+    if (totalSubstantive === 0) {
+      return {
+        result: null,
+        esTookMs: coverageRes.took ?? null,
+        hitsTotal: 0,
+      };
+    }
+    // Default selection: most recent year with coded speeches; fallback to
+    // most recent active year (so a politician with zero codings still gets
+    // their latest year on the x-axis, even if the panel renders empty).
+    const lastCodedYear = [...yearly].reverse().find((y) => y.coded > 0)?.year;
+    const lastActiveYear = yearly.at(-1)?.year ?? new Date().getUTCFullYear();
+    const selectedYear = opts.year ?? lastCodedYear ?? lastActiveYear;
+    const yearRange = {
+      gte: `${selectedYear}-01-01`,
+      lte: `${selectedYear}-12-31`,
+    };
+    const baseFilters = buildDiscourseFilters(personId, voiceMode, yearRange);
+    const hawkinsFilter: QueryDslQueryContainer[] = [];
+    const vpartyFilter: QueryDslQueryContainer[] = [];
+    const dqiFilter: QueryDslQueryContainer[] = [];
+    if (typeof confidenceMin === "number") {
+      hawkinsFilter.push({
+        range: {
+          "enrichments.discourse.hawkins.framework_confidence": { gte: confidenceMin },
+        },
+      });
+      vpartyFilter.push({
+        range: {
+          "enrichments.discourse.vparty.framework_confidence": { gte: confidenceMin },
+        },
+      });
+      dqiFilter.push({
+        range: {
+          "enrichments.discourse.dqi.framework_confidence": { gte: confidenceMin },
+        },
+      });
+    }
+    const monthAggReq = esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: { bool: { filter: baseFilters } },
+      aggs: {
+        per_month: {
+          date_histogram: {
+            field: "session_date",
+            calendar_interval: "month",
+            format: "yyyy-MM",
+            // Skip empty months — the aggregate-band component pads to 12
+            // visually so we don't need extended_bounds (which requires the
+            // bounds to match the agg's `format`, not the source field shape).
+            min_doc_count: 1,
+          },
+          aggs: {
+            hawkins: {
+              filter: { bool: { filter: hawkinsFilter } },
+              aggs: {
+                by_score: {
+                  terms: { field: "enrichments.discourse.hawkins.score", size: 5 },
+                },
+              },
+            },
+            vparty: {
+              filter: { bool: { filter: vpartyFilter } },
+              aggs: {
+                by_score: {
+                  terms: { field: "enrichments.discourse.vparty.score", size: 5 },
+                },
+              },
+            },
+            dqi: {
+              filter: { bool: { filter: dqiFilter } },
+              aggs: {
+                by_level: {
+                  terms: {
+                    field: "enrichments.discourse.dqi.level_of_justification",
+                    size: 5,
+                  },
+                },
+              },
+            },
+            voice_mix: {
+              terms: {
+                field: "enrichments.discourse.voice.dominant_voice",
+                size: 12,
+              },
+            },
+          },
+        },
+      },
+    });
+    const topMarkersReq = esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: { bool: { filter: baseFilters } },
+      aggs: {
+        hawkins_kinds: {
+          terms: {
+            field: "enrichments.discourse.hawkins.marker_kinds",
+            size: MAX_TOP_MARKERS,
+          },
+        },
+        vparty_kinds: {
+          terms: {
+            field: "enrichments.discourse.vparty.marker_kinds",
+            size: MAX_TOP_MARKERS,
+          },
+        },
+      },
+    });
+    const dotsReq = esClient().search<DiscourseDotSource>({
+      index: ES_INDEX.speeches,
+      size: MAX_SPEECH_DOTS,
+      track_total_hits: false,
+      query: { bool: { filter: baseFilters } },
+      sort: [{ session_date: { order: "asc" } }],
+      _source: {
+        includes: [
+          "record_id",
+          "url_path",
+          "session_date",
+          "enrichments.discourse.hawkins.score",
+          "enrichments.discourse.hawkins.framework_confidence",
+          "enrichments.discourse.hawkins.marker_count",
+          "enrichments.discourse.vparty.score",
+          "enrichments.discourse.vparty.framework_confidence",
+          "enrichments.discourse.vparty.marker_count",
+          "enrichments.discourse.dqi.level_of_justification",
+          "enrichments.discourse.voice.dominant_voice",
+          "enrichments.discourse_producer",
+        ],
+      },
+    });
+    const [monthRes, markerRes, dotsRes] = await Promise.all([monthAggReq, topMarkersReq, dotsReq]);
+    type ScoreBucket = { key: number; doc_count: number };
+    type MonthBucket = {
+      key_as_string: string;
+      hawkins: { by_score: { buckets: ScoreBucket[] } };
+      vparty: { by_score: { buckets: ScoreBucket[] } };
+      dqi: { by_level: { buckets: ScoreBucket[] } };
+      voice_mix: { buckets: Array<{ key: string; doc_count: number }> };
+      doc_count: number;
+    };
+    const buckets = ((
+      monthRes.aggregations as { per_month?: { buckets: MonthBucket[] } } | undefined
+    )?.per_month?.buckets ?? []) as MonthBucket[];
+    const monthly: DiscourseTrajectoryMonth[] = buckets.map((b) => {
+      const h = { 0: 0, 1: 0, 2: 0 } as DiscourseTrajectoryMonth["hawkins"];
+      for (const sb of b.hawkins.by_score.buckets) {
+        if (sb.key === 0 || sb.key === 1 || sb.key === 2) {
+          h[sb.key as 0 | 1 | 2] = sb.doc_count;
+        }
+      }
+      const v = { 0: 0, 1: 0, 2: 0 } as DiscourseTrajectoryMonth["vparty"];
+      for (const sb of b.vparty.by_score.buckets) {
+        if (sb.key === 0 || sb.key === 1 || sb.key === 2) {
+          v[sb.key as 0 | 1 | 2] = sb.doc_count;
+        }
+      }
+      const d = { 0: 0, 1: 0, 2: 0, 3: 0 } as DiscourseTrajectoryMonth["dqi"];
+      for (const sb of b.dqi.by_level.buckets) {
+        if (sb.key === 0 || sb.key === 1 || sb.key === 2 || sb.key === 3) {
+          d[sb.key as 0 | 1 | 2 | 3] = sb.doc_count;
+        }
+      }
+      return {
+        month: b.key_as_string,
+        hawkins: h,
+        vparty: v,
+        dqi: d,
+        codedTotal: b.doc_count,
+      };
+    });
+    const voiceMix = buckets.map((b) => {
+      const totals: Partial<Record<DiscourseVoice, number>> = {};
+      for (const vb of b.voice_mix.buckets) {
+        if (DISCOURSE_VOICES.includes(vb.key as DiscourseVoice)) {
+          totals[vb.key as DiscourseVoice] = vb.doc_count;
+        }
+      }
+      return { month: b.key_as_string, totals, total: b.doc_count };
+    });
+    const markerAggs = markerRes.aggregations as
+      | {
+          hawkins_kinds?: { buckets: Array<{ key: string; doc_count: number }> };
+          vparty_kinds?: { buckets: Array<{ key: string; doc_count: number }> };
+        }
+      | undefined;
+    const topMarkerKinds = [
+      ...(markerAggs?.hawkins_kinds?.buckets ?? []).map((b) => ({
+        framework: "hawkins" as const,
+        kind: b.key,
+        count: b.doc_count,
+      })),
+      ...(markerAggs?.vparty_kinds?.buckets ?? []).map((b) => ({
+        framework: "vparty" as const,
+        kind: b.key,
+        count: b.doc_count,
+      })),
+    ]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, MAX_TOP_MARKERS);
+    let producerLabel: string | null = null;
+    const speechDots: DiscourseSpeechDot[] = [];
+    for (const hit of dotsRes.hits.hits) {
+      const src = hit._source as DiscourseDotSource | undefined;
+      if (!src?.session_date) continue;
+      const d = src.enrichments?.discourse;
+      if (!producerLabel && src.enrichments?.discourse_producer) {
+        producerLabel = src.enrichments.discourse_producer;
+      }
+      speechDots.push({
+        recordId: src.record_id,
+        url: src.url_path,
+        sessionDate: src.session_date,
+        hScore: scoreOrNull(d?.hawkins?.score),
+        vScore: scoreOrNull(d?.vparty?.score),
+        dqiLevel: dqiLevelOrNull(d?.dqi?.level_of_justification),
+        dominantVoice: voiceOrNull(d?.voice?.dominant_voice),
+        hawkinsMarkerCount:
+          typeof d?.hawkins?.marker_count === "number" ? d.hawkins.marker_count : 0,
+        vpartyMarkerCount: typeof d?.vparty?.marker_count === "number" ? d.vparty.marker_count : 0,
+        hawkinsConfidence:
+          typeof d?.hawkins?.framework_confidence === "number"
+            ? d.hawkins.framework_confidence
+            : null,
+        vpartyConfidence:
+          typeof d?.vparty?.framework_confidence === "number"
+            ? d.vparty.framework_confidence
+            : null,
+      });
+    }
+    return {
+      result: {
+        personId,
+        selectedYear,
+        monthly,
+        speechDots,
+        voiceMix,
+        topMarkerKinds,
+        coverage: {
+          totalSubstantive,
+          codedSubstantive,
+          firstCodedDate: cov?.first_coded.v.value_as_string ?? null,
+          lastCodedDate: cov?.last_coded.v.value_as_string ?? null,
+          firstSubstantiveDate: cov?.first_substantive.value_as_string ?? null,
+          lastSubstantiveDate: cov?.last_substantive.value_as_string ?? null,
+          yearly,
+        },
+        producerLabel,
+      },
+      esTookMs: monthRes.took ?? null,
+      hitsTotal: speechDots.length,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// /statistici queries (Phase 4 of the discourse-UI rollout). Four panels;
+// each backed by one ES query. All accept the same chip-toggle filters as
+// the rest of the discourse UI so the share-link contract is consistent.
+
+interface DiscourseStatsFilters {
+  year?: number;
+  chamber?: Chamber;
+  voiceMode?: "first-person" | "all";
+  confidenceMin?: number | null;
+}
+
+function buildSystemFilters(opts: DiscourseStatsFilters): QueryDslQueryContainer[] {
+  const filters: QueryDslQueryContainer[] = [
+    { term: { is_substantive: true } },
+    { exists: { field: "enrichments.discourse" } },
+  ];
+  if (opts.year) {
+    filters.push({
+      range: { session_date: { gte: `${opts.year}-01-01`, lte: `${opts.year}-12-31` } },
+    });
+  }
+  if (opts.chamber) filters.push({ term: { chamber: opts.chamber } });
+  if ((opts.voiceMode ?? "first-person") === "first-person") {
+    filters.push({
+      term: { "enrichments.discourse.voice.dominant_voice": "speaker_first_person" },
+    });
+  }
+  return filters;
+}
+
+export async function discourseTimeSeries(
+  opts: DiscourseStatsFilters,
+): Promise<DiscourseSystemTimeSeries> {
+  return timed("discourseTimeSeries", { ...opts }, async () => {
+    const filters = buildSystemFilters(opts);
+    const conf = opts.confidenceMin ?? null;
+    const hAggFilter: QueryDslQueryContainer[] = [
+      { range: { "enrichments.discourse.hawkins.score": { gte: 1 } } },
+    ];
+    const hAggFilter2: QueryDslQueryContainer[] = [
+      { range: { "enrichments.discourse.hawkins.score": { gte: 2 } } },
+    ];
+    const vAggFilter: QueryDslQueryContainer[] = [
+      { range: { "enrichments.discourse.vparty.score": { gte: 1 } } },
+    ];
+    const vAggFilter2: QueryDslQueryContainer[] = [
+      { range: { "enrichments.discourse.vparty.score": { gte: 2 } } },
+    ];
+    if (typeof conf === "number") {
+      hAggFilter.push({
+        range: { "enrichments.discourse.hawkins.framework_confidence": { gte: conf } },
+      });
+      hAggFilter2.push({
+        range: { "enrichments.discourse.hawkins.framework_confidence": { gte: conf } },
+      });
+      vAggFilter.push({
+        range: { "enrichments.discourse.vparty.framework_confidence": { gte: conf } },
+      });
+      vAggFilter2.push({
+        range: { "enrichments.discourse.vparty.framework_confidence": { gte: conf } },
+      });
+    }
+    const res = await esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: { bool: { filter: filters } },
+      aggs: {
+        per_month: {
+          date_histogram: {
+            field: "session_date",
+            calendar_interval: "month",
+            format: "yyyy-MM",
+            min_doc_count: 1,
+          },
+          aggs: {
+            hge1: { filter: { bool: { filter: hAggFilter } } },
+            hge2: { filter: { bool: { filter: hAggFilter2 } } },
+            vge1: { filter: { bool: { filter: vAggFilter } } },
+            vge2: { filter: { bool: { filter: vAggFilter2 } } },
+          },
+        },
+      },
+    });
+    type Bucket = {
+      key_as_string: string;
+      doc_count: number;
+      hge1: { doc_count: number };
+      hge2: { doc_count: number };
+      vge1: { doc_count: number };
+      vge2: { doc_count: number };
+    };
+    const buckets = ((res.aggregations as { per_month?: { buckets: Bucket[] } } | undefined)
+      ?.per_month?.buckets ?? []) as Bucket[];
+    const monthly: DiscourseSystemMonth[] = buckets.map((b) => ({
+      month: b.key_as_string,
+      total: b.doc_count,
+      hge1: b.hge1.doc_count,
+      hge2: b.hge2.doc_count,
+      vge1: b.vge1.doc_count,
+      vge2: b.vge2.doc_count,
+    }));
+    return {
+      result: {
+        year: opts.year ?? new Date().getUTCFullYear(),
+        monthly,
+      },
+      esTookMs: res.took ?? null,
+      hitsTotal: monthly.length,
+    };
+  });
+}
+
+export async function discourseHvCrosstab(
+  opts: DiscourseStatsFilters,
+): Promise<DiscourseHvCrosstab> {
+  return timed("discourseHvCrosstab", { ...opts }, async () => {
+    const filters = buildSystemFilters(opts);
+    if (typeof opts.confidenceMin === "number") {
+      filters.push({
+        range: {
+          "enrichments.discourse.hawkins.framework_confidence": { gte: opts.confidenceMin },
+        },
+      });
+      filters.push({
+        range: {
+          "enrichments.discourse.vparty.framework_confidence": { gte: opts.confidenceMin },
+        },
+      });
+    }
+    const res = await esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: { bool: { filter: filters } },
+      aggs: {
+        by_hawkins: {
+          terms: { field: "enrichments.discourse.hawkins.score", size: 5 },
+          aggs: {
+            by_vparty: {
+              terms: { field: "enrichments.discourse.vparty.score", size: 5 },
+            },
+          },
+        },
+      },
+    });
+    type Inner = { key: number; doc_count: number };
+    type Outer = { key: number; doc_count: number; by_vparty: { buckets: Inner[] } };
+    const buckets = ((res.aggregations as { by_hawkins?: { buckets: Outer[] } } | undefined)
+      ?.by_hawkins?.buckets ?? []) as Outer[];
+    const cells: DiscourseHvCrosstabCell[] = [];
+    let total = 0;
+    let illiberal = 0;
+    for (const o of buckets) {
+      if (o.key !== 0 && o.key !== 1 && o.key !== 2) continue;
+      const h = o.key as 0 | 1 | 2;
+      for (const i of o.by_vparty.buckets) {
+        if (i.key !== 0 && i.key !== 1 && i.key !== 2) continue;
+        const v = i.key as 0 | 1 | 2;
+        cells.push({ h, v, count: i.doc_count });
+        total += i.doc_count;
+        if (h === 2 && v >= 1) illiberal += i.doc_count;
+      }
+    }
+    return {
+      result: {
+        year: opts.year ?? new Date().getUTCFullYear(),
+        total,
+        cells,
+        illiberalCount: illiberal,
+      },
+      esTookMs: res.took ?? null,
+      hitsTotal: total,
+    };
+  });
+}
+
+export async function topPoliticiansByDiscourseRate(
+  opts: DiscourseStatsFilters & { axis: "hawkins" | "vparty" | "dqi"; size?: number },
+): Promise<DiscourseTopPoliticiansPayload> {
+  return timed("topPoliticiansByDiscourseRate", { ...opts }, async () => {
+    const filters: QueryDslQueryContainer[] = buildSystemFilters(opts);
+    filters.push({ exists: { field: "speaker.person_id" } });
+    if (typeof opts.confidenceMin === "number") {
+      const path =
+        opts.axis === "hawkins"
+          ? "enrichments.discourse.hawkins.framework_confidence"
+          : opts.axis === "vparty"
+            ? "enrichments.discourse.vparty.framework_confidence"
+            : "enrichments.discourse.dqi.framework_confidence";
+      filters.push({ range: { [path]: { gte: opts.confidenceMin } } });
+    }
+    const ge1Filter: QueryDslQueryContainer =
+      opts.axis === "dqi"
+        ? { range: { "enrichments.discourse.dqi.level_of_justification": { gte: 2 } } }
+        : opts.axis === "hawkins"
+          ? { range: { "enrichments.discourse.hawkins.score": { gte: 1 } } }
+          : { range: { "enrichments.discourse.vparty.score": { gte: 1 } } };
+    const size = Math.min(50, Math.max(5, opts.size ?? 15));
+    const res = await esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: { bool: { filter: filters } },
+      aggs: {
+        by_person: {
+          terms: {
+            field: "speaker.person_id",
+            size,
+            order: { ge1: "desc" },
+            min_doc_count: 5,
+          },
+          aggs: {
+            ge1: { filter: ge1Filter },
+            sample_name: {
+              top_hits: {
+                size: 1,
+                _source: ["speaker.name_search", "speaker.name_raw"],
+              },
+            },
+          },
+        },
+      },
+    });
+    type SampleSrc = { speaker?: { name_search?: string; name_raw?: string } };
+    type PersonBucket = {
+      key: string;
+      doc_count: number;
+      ge1: { doc_count: number };
+      sample_name: { hits: { hits: Array<{ _source?: SampleSrc }> } };
+    };
+    const buckets = ((res.aggregations as { by_person?: { buckets: PersonBucket[] } } | undefined)
+      ?.by_person?.buckets ?? []) as PersonBucket[];
+    const rows = buckets.map((b) => {
+      const sample = b.sample_name.hits.hits[0]?._source as SampleSrc | undefined;
+      const name = sample?.speaker?.name_search ?? sample?.speaker?.name_raw ?? b.key;
+      const rate = b.doc_count > 0 ? b.ge1.doc_count / b.doc_count : 0;
+      const ci = wilson95(b.ge1.doc_count, b.doc_count);
+      return {
+        personId: b.key,
+        name,
+        speechCount: b.doc_count,
+        ge1Count: b.ge1.doc_count,
+        ge1Rate: rate,
+        ciLow: ci.lo,
+        ciHigh: ci.hi,
+      };
+    });
+    return {
+      result: {
+        axis: opts.axis,
+        year: opts.year ?? new Date().getUTCFullYear(),
+        rows,
+      },
+      esTookMs: res.took ?? null,
+      hitsTotal: rows.length,
+    };
+  });
+}
+
+export async function discourseMarkerTreemap(
+  opts: DiscourseStatsFilters & { framework?: "hawkins" | "vparty" | "both"; size?: number },
+): Promise<DiscourseMarkerTreemap> {
+  return timed("discourseMarkerTreemap", { ...opts }, async () => {
+    const filters = buildSystemFilters(opts);
+    if (typeof opts.confidenceMin === "number") {
+      filters.push({
+        range: {
+          "enrichments.discourse.hawkins.framework_confidence": { gte: opts.confidenceMin },
+        },
+      });
+    }
+    const size = Math.min(40, Math.max(10, opts.size ?? 20));
+    const fw = opts.framework ?? "both";
+    const aggs: Record<string, AggregationsAggregationContainer> = {};
+    if (fw !== "vparty") {
+      aggs.hawkins_kinds = {
+        terms: { field: "enrichments.discourse.hawkins.marker_kinds", size },
+      };
+    }
+    if (fw !== "hawkins") {
+      aggs.vparty_kinds = {
+        terms: { field: "enrichments.discourse.vparty.marker_kinds", size },
+      };
+    }
+    const res = await esClient().search({
+      index: ES_INDEX.speeches,
+      size: 0,
+      query: { bool: { filter: filters } },
+      aggs,
+    });
+    type KindBucket = { key: string; doc_count: number };
+    const a = res.aggregations as
+      | {
+          hawkins_kinds?: { buckets: KindBucket[] };
+          vparty_kinds?: { buckets: KindBucket[] };
+        }
+      | undefined;
+    const items = [
+      ...(a?.hawkins_kinds?.buckets ?? []).map((b) => ({
+        framework: "hawkins" as const,
+        kind: b.key,
+        count: b.doc_count,
+      })),
+      ...(a?.vparty_kinds?.buckets ?? []).map((b) => ({
+        framework: "vparty" as const,
+        kind: b.key,
+        count: b.doc_count,
+      })),
+    ]
+      .sort((x, y) => y.count - x.count)
+      .slice(0, size);
+    const total = items.reduce((acc, i) => acc + i.count, 0);
+    return {
+      result: {
+        year: opts.year ?? new Date().getUTCFullYear(),
+        items,
+        total,
+      },
+      esTookMs: res.took ?? null,
+      hitsTotal: items.length,
+    };
+  });
+}
+
+// Wilson 95% CI for a proportion. Closed form, no iteration. Documented as
+// an approximation in the methodology block; bootstrap rank-CI per
+// canonical-queries.md is a v2 upgrade.
+function wilson95(successes: number, total: number): { lo: number; hi: number } {
+  if (total === 0) return { lo: 0, hi: 0 };
+  const z = 1.96;
+  const p = successes / total;
+  const denom = 1 + (z * z) / total;
+  const center = (p + (z * z) / (2 * total)) / denom;
+  const margin = (z * Math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total))) / denom;
+  return { lo: Math.max(0, center - margin), hi: Math.min(1, center + margin) };
+}
+
+function scoreOrNull(v: unknown): 0 | 1 | 2 | null {
+  if (v === 0 || v === 1 || v === 2) return v;
+  return null;
+}
+
+function dqiLevelOrNull(v: unknown): 0 | 1 | 2 | 3 | null {
+  if (v === 0 || v === 1 || v === 2 || v === 3) return v;
+  return null;
+}
+
+function voiceOrNull(v: unknown): DiscourseVoice | null {
+  if (typeof v !== "string") return null;
+  return (DISCOURSE_VOICES as readonly string[]).includes(v) ? (v as DiscourseVoice) : null;
 }
 
 // ---------------------------------------------------------------------------

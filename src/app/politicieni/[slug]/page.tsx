@@ -4,13 +4,15 @@ import { notFound } from "next/navigation";
 
 import { ContributionsGraph } from "@/components/contributions-graph";
 import { Dateline } from "@/components/dateline";
+import { PersonDiscoursePanel } from "@/components/discourse/person-discourse-panel";
 import { Pagination } from "@/components/pagination";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { YearlyActivityChart } from "@/components/yearly-activity-chart";
 import { env } from "@/env";
+import { parseDiscourseParams } from "@/lib/discourse-params";
 import { formatCount, formatDate, speechExcerpt, speechMeta, speechWordCount } from "@/lib/format";
-import { personPage } from "@/lib/search";
-import type { Mandate, MoPerson, MoSpeech, PersonStats } from "@/lib/types";
+import { personDiscourseTrajectory, personPage } from "@/lib/search";
+import type { DiscourseFramework, Mandate, MoPerson, MoSpeech, PersonStats } from "@/lib/types";
 
 // Person pages are citation-grade archive entries: stable URL, ISR 1h, JSON-LD
 // `Person` graph node so the page is harvestable as a public registry record.
@@ -23,7 +25,23 @@ interface RouteParams {
 
 interface PageProps {
   params: Promise<RouteParams>;
-  searchParams: Promise<{ year?: string; day?: string; page?: string }>;
+  searchParams: Promise<{
+    year?: string;
+    day?: string;
+    page?: string;
+    fw?: string;
+    voice?: string;
+    conf?: string;
+  }>;
+}
+
+const DISCOURSE_FRAMEWORKS: DiscourseFramework[] = ["hawkins", "vparty", "dqi", "voice"];
+
+function parseFrameworkParam(raw: string | undefined): DiscourseFramework {
+  if (raw && (DISCOURSE_FRAMEWORKS as string[]).includes(raw)) {
+    return raw as DiscourseFramework;
+  }
+  return "hawkins";
 }
 
 // Accepts `2024`, `1995`, etc. Anything outside the parliamentary archive
@@ -95,8 +113,24 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
   const year = parseYearParam(sp.year);
   const day = parseDayParam(sp.day);
   const page = parsePageParam(sp.page);
-  const payload = await personPage(slug, { year, day, page });
+  const framework = parseFrameworkParam(sp.fw);
+  const discourseParams = parseDiscourseParams(sp);
+  const [payload, trajectory] = await Promise.all([
+    personPage(slug, { year, day, page }),
+    personDiscourseTrajectory(slug, {
+      year,
+      voiceMode: discourseParams.voiceMode,
+      confidenceMin: discourseParams.confidenceMin,
+    }),
+  ]);
   if (!payload) notFound();
+  const discourseSearchParams = new URLSearchParams();
+  if (year) discourseSearchParams.set("year", String(year));
+  if (day) discourseSearchParams.set("day", day);
+  if (page && page > 1) discourseSearchParams.set("page", String(page));
+  if (framework !== "hawkins") discourseSearchParams.set("fw", framework);
+  if (discourseParams.voiceMode === "all") discourseSearchParams.set("voice", "all");
+  if (discourseParams.confidenceMin === 0.7) discourseSearchParams.set("conf", "07");
   const {
     person,
     stats,
@@ -169,6 +203,17 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
             selectedDate={selectedDate}
           />
         </section>
+      ) : null}
+
+      {trajectory && trajectory.coverage.codedSubstantive > 0 ? (
+        <PersonDiscoursePanel
+          trajectory={trajectory}
+          framework={framework}
+          basePath={`/politicieni/${person.slug}`}
+          searchParams={discourseSearchParams}
+          params={discourseParams}
+          className="mt-12"
+        />
       ) : null}
 
       <section className="mt-12" aria-labelledby="discursuri-recente">

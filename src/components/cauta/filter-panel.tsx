@@ -151,6 +151,10 @@ export function FilterPanel({
           ) : null}
           <ProceduralField checked={params.includeProcedural} />
           <SortField selected={params.sort} />
+          <HawkinsField selected={params.hawkinsScores} />
+          <VpartyField selected={params.vpartyScores} />
+          <DqiField selected={params.dqiLevelMin} />
+          <DiscourseChipsField voiceMode={params.voiceMode} confidenceMin={params.confidenceMin} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-paper-91 px-3 py-3 md:px-4">
           <p className="label-mono text-ink-45">
@@ -371,6 +375,113 @@ function SortField({ selected }: { selected: SortSlug }) {
           <ChipRadioItem key={v} value={v} label={SORT_LABELS[v]} />
         ))}
       </RadioGroup>
+    </fieldset>
+  );
+}
+
+// Discourse-UI Phase 5 fields. The form-level URL builder collapses each
+// `name="hawkins"` / `name="vparty"` checkbox into the comma-joined `?hawkins=`
+// / `?vparty=` URL params (same trick as the existing year chips).
+
+function HvScoreChips({
+  name,
+  selected,
+}: {
+  name: "hawkins" | "vparty";
+  selected: Array<0 | 1 | 2>;
+}) {
+  const set = new Set(selected);
+  const values: Array<0 | 1 | 2> = [0, 1, 2];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {values.map((v) => (
+        <CheckboxPrimitive.Root
+          key={`${name}-${v}-${set.has(v)}`}
+          name={name}
+          value={String(v)}
+          defaultChecked={set.has(v)}
+          data-slot={`${name}-chip`}
+          className={CHIP_CLASSES}
+        >
+          {v}
+        </CheckboxPrimitive.Root>
+      ))}
+    </div>
+  );
+}
+
+function HawkinsField({ selected }: { selected: Array<0 | 1 | 2> }) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <FieldHeader label="Populism (Hawkins)" hint="0 / 1 / 2" />
+      <HvScoreChips name="hawkins" selected={selected} />
+    </fieldset>
+  );
+}
+
+function VpartyField({ selected }: { selected: Array<0 | 1 | 2> }) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <FieldHeader label="Anti-pluralism (V-Party)" hint="0 / 1 / 2" />
+      <HvScoreChips name="vparty" selected={selected} />
+    </fieldset>
+  );
+}
+
+function DqiField({ selected }: { selected: 1 | 2 | 3 | null }) {
+  const options: Array<{ value: string; label: string }> = [
+    { value: "", label: "Toate" },
+    { value: "1", label: "≥ L1" },
+    { value: "2", label: "≥ L2" },
+    { value: "3", label: "≥ L3" },
+  ];
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <FieldHeader label="Calitate deliberativă (DQI ≥)" />
+      <RadioGroup
+        key={`dqi-${selected ?? "none"}`}
+        name="dqi"
+        defaultValue={selected ? String(selected) : ""}
+        className="flex flex-row flex-wrap gap-1.5"
+      >
+        {options.map((opt) => (
+          <ChipRadioItem key={opt.value || "all"} value={opt.value} label={opt.label} />
+        ))}
+      </RadioGroup>
+    </fieldset>
+  );
+}
+
+function DiscourseChipsField({
+  voiceMode,
+  confidenceMin,
+}: {
+  voiceMode: "first-person" | "all";
+  confidenceMin: number | null;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <FieldHeader label="Voce + încredere" />
+      <div className="flex flex-row flex-wrap gap-1.5">
+        <RadioGroup
+          key={`voice-${voiceMode}`}
+          name="voice"
+          defaultValue={voiceMode === "all" ? "all" : ""}
+          className="flex flex-row flex-wrap gap-1.5"
+        >
+          <ChipRadioItem value="" label="Vocea proprie" />
+          <ChipRadioItem value="all" label="Toate vocile" />
+        </RadioGroup>
+        <RadioGroup
+          key={`conf-${confidenceMin ?? "none"}`}
+          name="conf"
+          defaultValue={confidenceMin === 0.7 ? "07" : ""}
+          className="flex flex-row flex-wrap gap-1.5"
+        >
+          <ChipRadioItem value="" label="Toate codările" />
+          <ChipRadioItem value="07" label="Doar ≥ 0.7" />
+        </RadioGroup>
+      </div>
     </fieldset>
   );
 }

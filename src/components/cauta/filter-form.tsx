@@ -38,12 +38,32 @@ export function CautaFilterForm({ children }: { children: React.ReactNode }) {
         const sp = new URLSearchParams();
         if (years.length > 0) sp.set("year", years.join(","));
 
+        // Multi-select Hawkins / V-Party score chips — same shape as year.
+        for (const key of ["hawkins", "vparty"]) {
+          const set = new Set<string>();
+          for (const v of fd.getAll(key)) {
+            const s = String(v).trim();
+            if (s) set.add(s);
+          }
+          fd.delete(key);
+          if (set.size > 0) {
+            const csv = [...set]
+              .map((s) => Number.parseInt(s, 10))
+              .filter((n) => n === 0 || n === 1 || n === 2)
+              .sort((a, b) => a - b)
+              .join(",");
+            if (csv) sp.set(key, csv);
+          }
+        }
+
         for (const [k, v] of fd.entries()) {
           if (typeof v !== "string") continue;
           const trimmed = v.trim();
           if (!trimmed) continue;
           // Default sort doesn't need to ride in the URL.
           if (k === "sort" && trimmed === "relevance") continue;
+          // Voice "first-person" (the implicit default) → omit.
+          if (k === "voice" && trimmed === "first-person") continue;
           sp.set(k, trimmed);
         }
         const qs = sp.toString();
