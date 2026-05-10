@@ -21,7 +21,7 @@ import { env } from "@/env";
 // Each axis has two tiers:
 //
 //   - `general` (30/min) — every tool call.
-//   - `heavy`   (6/min) — RRF / kNN-only `search_speeches`. Each call hits
+//   - `heavy`   (20/min) — RRF / kNN-only `search_speeches`. Each call hits
 //     the embed service and runs two ES queries; tighter per-IP and
 //     per-user caps stop a single actor from melting the embed pool.
 //
@@ -91,7 +91,7 @@ export function heavyLimiter(): RateLimiter {
   }
   cachedHeavy = new Ratelimit({
     redis: r,
-    limiter: Ratelimit.slidingWindow(6, "1 m"),
+    limiter: Ratelimit.slidingWindow(20, "1 m"),
     prefix: "mcp:heavy",
     analytics: false,
   });
@@ -123,7 +123,7 @@ export function userHeavyLimiter(): RateLimiter {
   }
   cachedUserHeavy = new Ratelimit({
     redis: r,
-    limiter: Ratelimit.slidingWindow(6, "1 m"),
+    limiter: Ratelimit.slidingWindow(20, "1 m"),
     prefix: "mcp:user-heavy",
     analytics: false,
   });

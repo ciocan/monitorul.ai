@@ -124,7 +124,7 @@ export default function McpPage() {
           <Link href="/cont" className="underline underline-offset-4 hover:text-ink-16">
             /cont
           </Link>
-          . Limita: 30 cereri/min per cont și per IP; 6 cereri/min pentru căutare hibridă (RRF /
+          . Limita: 30 cereri/min per cont și per IP; 20 cereri/min pentru căutare hibridă (RRF /
           kNN-only). Vezi{" "}
           <a href="#limite" className="underline underline-offset-4 hover:text-ink-16">
             Limite și costuri
@@ -324,7 +324,7 @@ export default function McpPage() {
             în care asistentul rulează 5–10 apeluri pe rând.
           </li>
           <li>
-            <strong>6 cereri / minut / cont</strong> și <strong>6 cereri / minut / IP</strong> —
+            <strong>20 cereri / minut / cont</strong> și <strong>20 cereri / minut / IP</strong> —
             căutare hibridă cu RRF sau kNN. Aceste apeluri ating serviciul de embeddings; limita
             strânsă previne folosirea disproporționată.
           </li>

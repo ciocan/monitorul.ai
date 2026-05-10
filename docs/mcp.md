@@ -165,8 +165,8 @@ Upstash Ratelimit + Upstash Redis (free tier covers 10K commands/day) in front o
 | ---------------- | --------------------------- | ------------------------------------------------------ |
 | `general` (IP)   | 30 requests / minute / IP   | Every tool call                                        |
 | `general` (user) | 30 requests / minute / user | Every tool call                                        |
-| `heavy` (IP)     | 6 requests / minute / IP    | `search_speeches` when `rank_fusion ∈ {rrf, knn-only}` |
-| `heavy` (user)   | 6 requests / minute / user  | `search_speeches` when `rank_fusion ∈ {rrf, knn-only}` |
+| `heavy` (IP)     | 20 requests / minute / IP   | `search_speeches` when `rank_fusion ∈ {rrf, knn-only}` |
+| `heavy` (user)   | 20 requests / minute / user | `search_speeches` when `rank_fusion ∈ {rrf, knn-only}` |
 
 The two axes are defense in depth:
 
