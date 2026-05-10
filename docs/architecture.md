@@ -383,7 +383,7 @@ This lets search-only deploys (or CI) run without storage creds. `S3_REGION` def
 
 - Detail pages → `force-static` with `revalidate: 3600` and `revalidateTag('mo-<grain>:<id>')`.
 - Search results → `Cache-Control: s-maxage=60, stale-while-revalidate=300`.
-- Sitemaps → `force-static`, regenerated nightly.
+- Sitemaps → `revalidate = 3600` per shard. [`src/app/sitemap.ts`](../src/app/sitemap.ts) exports `generateSitemaps()` returning `{ id: string }[]` — descriptive ids (`static`, `persons`, `committees`, `docs-YYYY`) keep `/sitemap/<id>.xml` URLs bookmark-stable. Lean scope: every static page + politician + committee + document, but no speech URLs (those flow through internal links). `mo-persons` and `mo-documents` are read with `search_after` over `_doc` sort, 5k-per-batch up to 50k per shard. Next.js 16 doesn't auto-emit a `<sitemapindex>` and adding a handler at `/sitemap.xml` conflicts with the metadata loader's URL namespace, so [`src/app/robots.ts`](../src/app/robots.ts) advertises every shard as its own `Sitemap:` line — fully sitemap-protocol-compliant and what Googlebot/Bingbot consume directly. Design record: [`_session-handoff-2026-05-10-sitemap.md`](./_session-handoff-2026-05-10-sitemap.md).
 
 The Python indexer (`monitorul-ii index`) calls a webhook on every successful upsert with the affected `(grain, record_id)` pairs. This app exposes the receiving route, validates the shared secret, and calls `revalidateTag` for each pair so freshly-indexed records appear without a full rebuild.
 

@@ -4,6 +4,7 @@ import type {
   AggregationsAggregationContainer,
   QueryDslQueryContainer,
   SearchRequest,
+  SortResults,
 } from "@elastic/elasticsearch/lib/api/types";
 import { after } from "next/server";
 
@@ -2960,6 +2961,179 @@ export async function getArchiveStats(): Promise<ArchiveStats> {
       esTookMs: null,
       hitsTotal: Object.keys(stats).length,
     };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sitemap helpers — see `docs/_session-handoff-2026-05-10-sitemap.md`. Each
+// reader projects the minimal `_source` it needs and stays well under the
+// per-shard 50k URL cap that Next.js's `generateSitemaps()` enforces.
+
+// `search_after` batch size. ES's default `index.max_result_window` is 10k
+// per page, but `search_after` paginates beyond that. 5k keeps memory pressure
+// modest while keeping the round-trip count low.
+const SITEMAP_BATCH_SIZE = 5_000;
+// Hard upper bound at the per-shard URL cap (50k = Next's `generateSitemaps`
+// shard cap). Anything beyond this would silently truncate in the emitted
+// sitemap anyway, so we cap the read.
+const SITEMAP_MAX_BATCHES = 10;
+
+export interface SitemapDocumentEntry {
+  urlPath: string;
+  lastModified: string | null;
+}
+
+export interface SitemapPersonEntry {
+  urlPath: string;
+  lastModified: string | null;
+}
+
+export interface SitemapCommitteeEntry {
+  committeeId: string;
+  lastModified: string | null;
+}
+
+export async function listIndexedDocumentYears(): Promise<number[]> {
+  return timed("listIndexedDocumentYears", {}, async () => {
+    const res = await esClient().search({
+      index: ES_INDEX.documents,
+      size: 0,
+      aggs: {
+        by_year: {
+          terms: {
+            field: "year",
+            size: 200,
+            order: { _key: "asc" },
+            min_doc_count: 1,
+          },
+        },
+      },
+    });
+    const buckets =
+      (
+        res.aggregations as
+          | { by_year: { buckets: Array<{ key: number; doc_count: number }> } }
+          | undefined
+      )?.by_year.buckets ?? [];
+    const years = buckets
+      .map((b) => b.key)
+      .filter((y) => y >= SESSION_YEAR_MIN && y <= SESSION_YEAR_MAX);
+    return { result: years, esTookMs: res.took ?? null, hitsTotal: years.length };
+  });
+}
+
+export async function listDocumentUrlsForSitemap(opts: {
+  year: number;
+}): Promise<SitemapDocumentEntry[]> {
+  return timed("listDocumentUrlsForSitemap", { year: opts.year }, async () => {
+    const out: SitemapDocumentEntry[] = [];
+    let totalEsTookMs = 0;
+    let searchAfter: SortResults | undefined;
+    for (let i = 0; i < SITEMAP_MAX_BATCHES; i++) {
+      // eslint-disable-next-line no-await-in-loop -- search_after pagination is intrinsically sequential.
+      const res = await esClient().search<MoDocument>({
+        index: ES_INDEX.documents,
+        size: SITEMAP_BATCH_SIZE,
+        track_total_hits: false,
+        query: { bool: { filter: [{ term: { year: opts.year } }] } },
+        // `_doc` is the cheapest stable sort and pairs cleanly with
+        // `search_after` for full-index iteration.
+        sort: [{ _doc: { order: "asc" } }],
+        _source: ["url_path", "published", "session_date"],
+        ...(searchAfter ? { search_after: searchAfter } : {}),
+      });
+      totalEsTookMs += res.took ?? 0;
+      const hits = res.hits.hits;
+      if (hits.length === 0) break;
+      for (const h of hits) {
+        const src = h._source;
+        if (!src?.url_path) continue;
+        out.push({
+          urlPath: src.url_path,
+          lastModified: src.published ?? src.session_date ?? null,
+        });
+      }
+      if (hits.length < SITEMAP_BATCH_SIZE) break;
+      searchAfter = hits[hits.length - 1].sort as SortResults | undefined;
+      if (!searchAfter) break;
+    }
+    return { result: out, esTookMs: totalEsTookMs, hitsTotal: out.length };
+  });
+}
+
+export async function listAllPersonSlugsForSitemap(): Promise<SitemapPersonEntry[]> {
+  return timed("listAllPersonSlugsForSitemap", {}, async () => {
+    const out: SitemapPersonEntry[] = [];
+    let totalEsTookMs = 0;
+    let searchAfter: SortResults | undefined;
+    for (let i = 0; i < SITEMAP_MAX_BATCHES; i++) {
+      // eslint-disable-next-line no-await-in-loop -- search_after pagination is intrinsically sequential.
+      const res = await esClient().search<MoPerson>({
+        index: ES_INDEX.persons,
+        size: SITEMAP_BATCH_SIZE,
+        track_total_hits: false,
+        query: { match_all: {} },
+        sort: [{ _doc: { order: "asc" } }],
+        _source: ["url_path", "indexed_at"],
+        ...(searchAfter ? { search_after: searchAfter } : {}),
+      });
+      totalEsTookMs += res.took ?? 0;
+      const hits = res.hits.hits;
+      if (hits.length === 0) break;
+      for (const h of hits) {
+        const src = h._source;
+        if (!src?.url_path) continue;
+        out.push({
+          urlPath: src.url_path,
+          lastModified: src.indexed_at ?? null,
+        });
+      }
+      if (hits.length < SITEMAP_BATCH_SIZE) break;
+      searchAfter = hits[hits.length - 1].sort as SortResults | undefined;
+      if (!searchAfter) break;
+    }
+    return { result: out, esTookMs: totalEsTookMs, hitsTotal: out.length };
+  });
+}
+
+export async function listAllCommitteeIdsForSitemap(): Promise<SitemapCommitteeEntry[]> {
+  return timed("listAllCommitteeIdsForSitemap", {}, async () => {
+    const res = await esClient().search({
+      index: ES_INDEX.committeeMeetings,
+      size: 0,
+      query: { bool: { filter: [{ exists: { field: "committee_id" } }] } },
+      aggs: {
+        by_committee: {
+          terms: {
+            field: "committee_id",
+            size: 2000,
+            order: { _count: "desc" },
+          },
+          aggs: {
+            last_meeting: { max: { field: "meeting_date" } },
+          },
+        },
+      },
+    });
+    const buckets =
+      (
+        res.aggregations as
+          | {
+              by_committee: {
+                buckets: Array<{
+                  key: string;
+                  doc_count: number;
+                  last_meeting: { value_as_string?: string };
+                }>;
+              };
+            }
+          | undefined
+      )?.by_committee.buckets ?? [];
+    const out: SitemapCommitteeEntry[] = buckets.map((b) => ({
+      committeeId: b.key,
+      lastModified: b.last_meeting.value_as_string ?? null,
+    }));
+    return { result: out, esTookMs: res.took ?? null, hitsTotal: out.length };
   });
 }
 
