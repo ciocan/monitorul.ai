@@ -312,7 +312,12 @@ function SpeechesList({ speeches }: { speeches: MoSpeech[] }) {
         const parsed = parseDocumentId(speech.document_id);
         const docHref = parsed
           ? `/mo/${parsed.year}/${parsed.part}/${parsed.issue}#discurs-${speech.position_in_document ?? speech.position_in_agenda}`
-          : "/";
+          : null;
+        // Canonical speech citation URL — see CLAUDE.md "Routes" entry for
+        // /discurs/[slug]. Falls back to the in-doc anchor while transitional
+        // records lack `slug` / `url_path`.
+        const discursHref = speech.url_path || (speech.slug ? `/discurs/${speech.slug}` : null);
+        const rowHref = discursHref ?? docHref ?? "/";
         const sessionDate = formatDate(speech.session_date);
         const excerpt = speechExcerpt(speech.text);
         const meta = speechMeta(speech);
@@ -320,7 +325,7 @@ function SpeechesList({ speeches }: { speeches: MoSpeech[] }) {
         return (
           <li key={speech.record_id}>
             <Link
-              href={docHref}
+              href={rowHref}
               className="group/row block px-1 py-5 transition-colors hover:bg-paper-96"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">

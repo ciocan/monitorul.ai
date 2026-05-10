@@ -443,23 +443,38 @@ function SpeechBlock({ speech }: { speech: MoSpeech }) {
   // plain text; links appear automatically as the backfill catches up.
   const personSlug = speech.speaker.person_id;
   const speaker = speakerLine(speech);
+  // Canonical speech URL for sharing / citation. The block stays inline
+  // (the doc page is the reading surface); the permalink handle just gives
+  // a copyable URL into the speech-detail page without leaving context.
+  const discursHref = speech.url_path || (speech.slug ? `/discurs/${speech.slug}` : null);
   return (
     <li
       id={anchorId}
-      className="scroll-mt-20 px-1 py-6 target:bg-paper-96 target:-mx-1 target:px-2"
+      className="group/speech scroll-mt-20 px-1 py-6 target:bg-paper-96 target:-mx-1 target:px-2"
     >
-      <p className="font-mono text-base font-semibold leading-tight text-ink-16">
-        {personSlug ? (
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="font-mono text-base font-semibold leading-tight text-ink-16">
+          {personSlug ? (
+            <Link
+              href={`/politicieni/${personSlug}`}
+              className="underline decoration-paper-91 underline-offset-4 hover:decoration-ink-30"
+            >
+              {speaker}
+            </Link>
+          ) : (
+            speaker
+          )}
+        </p>
+        {discursHref ? (
           <Link
-            href={`/politicieni/${personSlug}`}
-            className="underline decoration-paper-91 underline-offset-4 hover:decoration-ink-30"
+            href={discursHref}
+            className="label-mono text-ink-45 underline decoration-transparent underline-offset-4 transition-colors hover:decoration-ink-30 hover:text-ink-30 focus-visible:decoration-ink-30 group-hover/speech:text-ink-30"
+            aria-label={`Permalink discurs: ${speaker}`}
           >
-            {speaker}
+            #{anchorId.replace("discurs-", "")}
           </Link>
-        ) : (
-          speaker
-        )}
-      </p>
+        ) : null}
+      </div>
       {meta.length > 0 ? <p className="mt-1 label-mono text-ink-45">{meta.join(" · ")}</p> : null}
       {speech.text ? (
         <div className="mt-3 max-w-prose space-y-3 text-base leading-relaxed text-ink-30">

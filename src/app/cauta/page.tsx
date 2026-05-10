@@ -231,19 +231,44 @@ function SpeechHit({ hit, snippet }: { hit: MoSpeech; snippet?: string }) {
   const speechPosition = hit.position_in_document ?? hit.position_in_agenda;
   const docHref = parsed
     ? `/mo/${parsed.year}/${parsed.part}/${parsed.issue}#discurs-${speechPosition}`
-    : "/";
+    : null;
+  // Canonical speech URL minted upstream and stored on every `mo-speeches`
+  // record. Falls back to the in-doc anchor when slug is missing (rare —
+  // upstream extractor mints `slug` for every speech) so the row stays
+  // clickable in transitional states.
+  const discursHref = hit.url_path || (hit.slug ? `/discurs/${hit.slug}` : null);
   const personSlug = hit.speaker.person_id;
+  // Speaker subtitle — role + party-at-time, both upstream-populated when the
+  // linker resolves them. Surfacing them helps a journalist tell "Florin
+  // Iordache, ministru" apart from "Florin Iordache, deputat" at a glance.
+  const speakerMeta = [hit.speaker.role, hit.speaker.party_group_at_time].filter((p): p is string =>
+    Boolean(p),
+  );
+  // Top metadata strip: chamber + legislature on the left in label-mono;
+  // session date is pulled to its own slot on the right (next to the length
+  // meter) so the date reads as a primary scan target rather than vanishing
+  // mid-string. Per DESIGN.md "Numerals-Are-Mono Rule", the date is set in
+  // tabular mono.
+  const chamberMeta = [hit.chamber, hit.legislature ? `legislatura ${hit.legislature}` : null]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <li className="px-1 py-5">
+    <li className="px-1 py-6">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <p className="label-mono text-ink-45">
-          {[hit.chamber, sessionDate, hit.legislature ? `legislatura ${hit.legislature}` : null]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-        <SpeechLengthMeter wordCount={wordCount} />
+        {chamberMeta ? <p className="label-mono text-ink-45">{chamberMeta}</p> : <span />}
+        <div className="flex items-baseline gap-4">
+          {sessionDate ? (
+            <time
+              className="font-mono-meta text-xs text-ink-30"
+              dateTime={hit.session_date ?? undefined}
+            >
+              {sessionDate}
+            </time>
+          ) : null}
+          <SpeechLengthMeter wordCount={wordCount} />
+        </div>
       </div>
-      <p className="mt-2 text-base font-semibold leading-snug text-ink-16">
+      <p className="mt-3 text-base font-semibold leading-snug text-ink-16">
         {personSlug ? (
           <Link
             href={`/politicieni/${personSlug}`}
@@ -255,31 +280,56 @@ function SpeechHit({ hit, snippet }: { hit: MoSpeech; snippet?: string }) {
           speaker
         )}
       </p>
+      {speakerMeta.length > 0 ? (
+        <p className="mt-1 label-mono text-ink-45">{speakerMeta.join(" · ")}</p>
+      ) : null}
       {hit.agenda_title ? (
-        <p className="mt-1 text-sm text-ink-30">
-          <span className="text-ink-45">Pe ordinea de zi: </span>
-          {hit.agenda_title}
-        </p>
+        // Agenda title is the debate topic, not the speech itself — render
+        // with a label-mono eyebrow per DESIGN.md "section affordances" rule.
+        // Long parliamentary titles run six lines unchecked, so clamp to three.
+        <div className="mt-4">
+          <p className="label-mono text-ink-45">Pe ordinea de zi</p>
+          <p className="mt-1 line-clamp-3 max-w-prose text-sm leading-snug text-ink-30">
+            {hit.agenda_title}
+          </p>
+        </div>
       ) : null}
       {snippet ? (
         <p
-          className="mt-3 max-w-prose text-sm leading-relaxed text-ink-30"
+          className="mt-4 max-w-prose text-base leading-relaxed text-ink-16"
           // eslint-disable-next-line react/no-danger -- ES `highlight` returns
           // pre-sanitized text wrapped in our own `<mark>` tags. The query
           // string is not echoed back; only the matched fragments are.
           dangerouslySetInnerHTML={{ __html: snippet }}
         />
       ) : fallbackText ? (
-        <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-30">{fallbackText}</p>
+        <p className="mt-4 max-w-prose text-base leading-relaxed text-ink-16">{fallbackText}</p>
       ) : null}
-      <p className="mt-3">
-        <Link
-          href={docHref}
-          className="label-mono text-ink-45 underline decoration-paper-91 underline-offset-4 transition-colors hover:decoration-ink-30 hover:text-ink-30"
-        >
-          Vezi în context →
-        </Link>
-      </p>
+      {discursHref || docHref ? (
+        <p className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {discursHref ? (
+            <Link
+              href={discursHref}
+              className="label-mono text-ink-16 transition-colors hover:text-ink-30"
+            >
+              Citește discursul →
+            </Link>
+          ) : null}
+          {discursHref && docHref ? (
+            <span aria-hidden="true" className="label-mono text-ink-45">
+              ·
+            </span>
+          ) : null}
+          {docHref ? (
+            <Link
+              href={docHref}
+              className="label-mono text-ink-45 transition-colors hover:text-ink-30"
+            >
+              Vezi în context →
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
     </li>
   );
 }

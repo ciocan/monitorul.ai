@@ -157,7 +157,10 @@ export default async function SpeechPage({ params }: PageProps) {
           <p className="mt-3 label-mono text-ink-45">{speakerMeta.join(" · ")}</p>
         ) : null}
         {speech.agenda_title ? (
-          <p className="mt-4 max-w-prose text-base leading-relaxed text-ink-30">
+          // Long parliamentary titles ("Informare privind…") run six lines
+          // unchecked. Clamp to three; `-webkit-line-clamp` handles the
+          // trailing ellipsis automatically.
+          <p className="mt-4 line-clamp-3 max-w-prose text-base leading-relaxed text-ink-30">
             {agendaAnchor ? (
               <Link
                 href={agendaAnchor}

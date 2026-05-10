@@ -37,6 +37,11 @@ export interface CatalogueHit {
   absolute_url: string;
   document_id: string;
   document_url_path: string;
+  // In-context reading anchor on the parent document, when derivable
+  // (`/mo/<year>/<part>/<issue>#discurs-<position>`). Distinct from
+  // `url_path`, which is the canonical standalone speech-detail page —
+  // LLMs that want to surface "read in the original sitting" pick this.
+  document_anchor_url_path: string | null;
   speaker: {
     person_id: string | null;
     canonical_name: string;
@@ -86,23 +91,20 @@ function deriveDocumentUrlPath(speech: MoSpeech): string {
   return "";
 }
 
-// Resolve the *currently working* URL for a speech on this app. The upstream
-// pipeline mints `/discurs/<slug>` URLs for every speech, but the per-speech
-// detail route hasn't shipped on this Next.js app yet (CLAUDE.md: "Until
-// per-grain detail routes ship, individual speeches are addressable via
-// `#discurs-<position_in_document>`"). So we point at the document URL with
-// an anchor that the document page renders today — the LLM hands the user a
-// link that 200s instead of 404s.
-//
-// When position_in_document is null (rare; older archive entries), fall back
-// to just the document URL — the user can still find the speech in the body.
-function resolveSpeechUrlPath(speech: MoSpeech, documentUrlPath: string): string {
-  if (!documentUrlPath) {
-    // No document path derivable — fall back to the upstream slug-based
-    // path. This 404s today but at least the structure is sound for when
-    // the per-speech route ships.
-    return speech.url_path ?? `/discurs/${speech.slug}`;
-  }
+// Resolve the canonical URL for a speech: the standalone `/discurs/<slug>`
+// detail page, minted slug-once upstream and shipped on this app as the
+// citation surface. When the speech record is missing both `url_path` and
+// `slug` (transitional records pre-`extraction.identity` backfill) we fall
+// back to the in-doc anchor so the LLM still hands the user a 200-able link.
+function resolveSpeechUrlPath(speech: MoSpeech, documentAnchorPath: string | null): string {
+  if (speech.url_path) return speech.url_path;
+  if (speech.slug) return `/discurs/${speech.slug}`;
+  if (documentAnchorPath) return documentAnchorPath;
+  return "/";
+}
+
+function deriveDocumentAnchorPath(speech: MoSpeech, documentUrlPath: string): string | null {
+  if (!documentUrlPath) return null;
   if (speech.position_in_document != null) {
     return `${documentUrlPath}#discurs-${speech.position_in_document}`;
   }
@@ -112,7 +114,8 @@ function resolveSpeechUrlPath(speech: MoSpeech, documentUrlPath: string): string
 export function toCatalogueHit(speech: MoSpeech, highlight: string | undefined): CatalogueHit {
   const origin = siteOrigin();
   const document_url_path = deriveDocumentUrlPath(speech);
-  const url_path = resolveSpeechUrlPath(speech, document_url_path);
+  const document_anchor_url_path = deriveDocumentAnchorPath(speech, document_url_path);
+  const url_path = resolveSpeechUrlPath(speech, document_anchor_url_path);
   const personId = speech.speaker.person_id;
   const canonical_name = speech.speaker.name_search ?? speech.speaker.name_raw;
   const excerpt = highlight && highlight.trim() ? highlight : fallbackExcerpt(speech.text);
@@ -122,6 +125,7 @@ export function toCatalogueHit(speech: MoSpeech, highlight: string | undefined):
     absolute_url: `${origin}${url_path}`,
     document_id: speech.document_id,
     document_url_path,
+    document_anchor_url_path,
     speaker: {
       person_id: personId,
       canonical_name,

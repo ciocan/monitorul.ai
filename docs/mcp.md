@@ -80,10 +80,11 @@ Every search-result hit (the output of `search_speeches` and any future search-s
 ```ts
 interface CatalogueHit {
   record_id: string; // mo://YYYY/PART/ISSUE#suffix
-  url_path: string; // /discurs/<slug> | /mo/... | ...
+  url_path: string; // canonical /discurs/<slug> (slug-once)
   absolute_url: string; // NEXT_PUBLIC_SITE_URL + url_path
   document_id: string;
   document_url_path: string; // /mo/YYYY/PART/ISSUE
+  document_anchor_url_path: string | null; // /mo/.../#discurs-<position>, in-context reading
   speaker: {
     person_id: string | null;
     canonical_name: string;
@@ -101,6 +102,8 @@ interface CatalogueHit {
   };
 }
 ```
+
+`url_path` is the standalone `/discurs/<slug>` page — slug-once, citation-grade, the address an LLM should hand to a fact-checker. `document_anchor_url_path` is the same speech rendered inline within the parent stenogram (`/mo/<year>/<part>/<issue>#discurs-<position_in_document>`) — pick this when surfacing "read in the original sitting" context. Both 200; the standalone page 308-redirects renamed slug-prefix variants to canonical.
 
 Lookup tools (`get_*`, `person_page`, `committee_page`, `list_document_children`) return the **untrimmed** lib/search.ts shapes — they're detail views, not search hits. The LLM calls `get_speech(record_id)` when it needs the full body text for a verbatim quote.
 
