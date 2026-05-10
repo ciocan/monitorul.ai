@@ -1,11 +1,14 @@
 import Link from "next/link";
 
+import { FRAMEWORK_FG } from "@/components/discourse/framework-badge";
 import { McpEndpointUrl } from "@/components/mcp-endpoint-url";
 import { SiteSearch } from "@/components/site-search";
 import { Button } from "@/components/ui/button";
 import { env } from "@/env";
 import { formatCount } from "@/lib/format";
 import { type ArchiveStats, type ArchiveStatKey, getArchiveStats } from "@/lib/search";
+import type { DiscourseFramework } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const MCP_ENDPOINT = `${env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/mcp/server`;
 
@@ -91,6 +94,8 @@ export default async function Home() {
           />
         </ul>
       </section>
+
+      <DiscourseRegister />
 
       <McpRegister />
 
@@ -242,5 +247,91 @@ function McpFact({ label, value }: { label: string; value: string }) {
         {value}
       </dd>
     </div>
+  );
+}
+
+// Discourse-analysis announcement, sibling to McpRegister but visually
+// distinct: an open card on the page background (paper-99) framed by a
+// heavier ink-16 rule, opposite of MCP's filled paper-96 fill + paper-91
+// rule. Visual signature is a 2×2 grid of the four framework cells, each
+// labelled in its own framework color (the same palette the speech /
+// politician / document / stats pages use). No decorative chrome — the
+// schema itself IS the visual.
+function DiscourseRegister() {
+  return (
+    <section aria-labelledby="discurs-public" className="mt-16">
+      <div className="border-2 border-ink-16 bg-paper-99 p-6 sm:p-10">
+        <p className="label-mono text-ink-30">
+          Analiză de discurs <span className="px-1.5 text-ink-45">·</span> Patru cadre publicate
+          <span className="px-1.5 text-ink-45">·</span> Marcheri ancorați de text
+        </p>
+
+        <h2
+          id="discurs-public"
+          className="font-display mt-5 max-w-3xl text-2xl leading-[1.15] text-ink-16 sm:text-3xl lg:text-4xl"
+        >
+          Cum vorbește Parlamentul, citit sub patru cadre publicate.
+        </h2>
+
+        <p className="mt-5 max-w-prose text-base leading-relaxed text-ink-30">
+          Pe lângă textul stenogramelor, fiecare intervenție substanțială este codată sub patru
+          rubrici din literatura de științe politice. Codarea face afirmații despre{" "}
+          <em>ce s-a spus</em>, nu despre cine este vorbitorul — fiecare marcher este ancorat de
+          fragmentul exact pe care se sprijină și poate fi contestat.
+        </p>
+
+        <ul className="mt-8 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+          <FrameworkCell
+            framework="hawkins"
+            label="Hawkins · populism"
+            description="Cadrul „popor virtuos versus elite corupte”. Detectează maniheismul moral și antagonismul."
+          />
+          <FrameworkCell
+            framework="vparty"
+            label="V-Party · anti-pluralism"
+            description="Delegitimarea opoziției, justiției sau presei ca instituții. Atac la pluralism."
+          />
+          <FrameworkCell
+            framework="dqi"
+            label="DQI · calitate deliberativă"
+            description="Justificare substanțială, respect față de adversar, propuneri concrete."
+          />
+          <FrameworkCell
+            framework="voice"
+            label="Voce · atribuire"
+            description="Vorbitor în nume propriu, citat, parafrazat sau negat — cine vorbește, de fapt."
+          />
+        </ul>
+
+        <div className="mt-8 flex flex-wrap items-baseline gap-x-6 gap-y-3 border-t border-border pt-6">
+          <Button asChild size="lg">
+            <Link href="/statistici">Vezi statistici</Link>
+          </Button>
+          <Link
+            href="/despre/discurs"
+            className="label-mono text-ink-30 underline underline-offset-4 hover:text-ink-16"
+          >
+            Metodologia analizei →
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FrameworkCell({
+  framework,
+  label,
+  description,
+}: {
+  framework: DiscourseFramework;
+  label: string;
+  description: string;
+}) {
+  return (
+    <li className="bg-background p-5">
+      <p className={cn("label-mono", FRAMEWORK_FG[framework])}>{label}</p>
+      <p className="mt-2 text-sm leading-relaxed text-ink-30">{description}</p>
+    </li>
   );
 }

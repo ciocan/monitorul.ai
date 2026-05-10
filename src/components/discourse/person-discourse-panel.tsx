@@ -169,6 +169,7 @@ export function PersonDiscoursePanel({
             <Link
               href="/despre/discurs"
               className="underline decoration-paper-91 underline-offset-2 hover:text-ink-30 hover:decoration-ink-30"
+              target="_blank"
             >
               Metodologia
             </Link>

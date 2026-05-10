@@ -3,7 +3,7 @@ import { Suspense } from "react";
 
 import { AccountChip } from "@/components/account-chip";
 import { AccountMobileSection } from "@/components/account-mobile-section";
-import { SiteNavDesktop, SiteNavMobile } from "@/components/site-nav";
+import { SiteNavDesktop, SiteNavMobile, SiteRepoMenu } from "@/components/site-nav";
 import { SiteSearch } from "@/components/site-search";
 import { SiteSearchNav } from "@/components/site-search-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -24,7 +24,7 @@ export function SiteHeader() {
       <div className="mx-auto flex w-full max-w-(--breakpoint-2xl) items-center gap-6 px-6 py-4 sm:py-5">
         <Link
           href="/"
-          className="font-display relative top-[-4px] text-[18px] leading-none tracking-tight"
+          className="font-display relative top-px text-[18px] leading-none tracking-tight"
         >
           monitorul<span className="text-ink-45">.ai</span>
         </Link>
@@ -32,6 +32,7 @@ export function SiteHeader() {
         <SiteSearchNav>
           <SiteSearch />
         </SiteSearchNav>
+        <SiteRepoMenu className="hidden md:inline-flex" />
         <ThemeToggle />
         {/* `AccountChip` reads the session via `auth.api.getSession`; wrap
             in Suspense so a slow Neon round-trip doesn't stall the rest of
