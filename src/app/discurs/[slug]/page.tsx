@@ -3,12 +3,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 
+import { SpeechViewedTracker } from "@/components/analytics/page-trackers";
 import { Dateline } from "@/components/dateline";
 import { DiscourseSidePanel } from "@/components/discourse/discourse-side-panel";
 import { InlineMarkerOverlay } from "@/components/discourse/inline-marker-overlay";
 import { SpeechDiscourseSummary } from "@/components/discourse/speech-discourse-summary";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { env } from "@/env";
+import { speechWordCountBucket } from "@/lib/analytics";
 import { parseDiscourseParams } from "@/lib/discourse-params";
 import { prepareOverlay } from "@/lib/discourse-markers";
 import {
@@ -144,6 +146,12 @@ export default async function SpeechPage({ params, searchParams }: PageProps) {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
       <SpeechJsonLd speech={speech} />
+      <SpeechViewedTracker
+        has_speaker={Boolean(personSlug)}
+        has_discourse={Boolean(discourse)}
+        is_substantive={speech.is_substantive}
+        word_count_bucket={speechWordCountBucket(wordCount)}
+      />
 
       <Dateline
         parts={[

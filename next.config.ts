@@ -14,6 +14,51 @@ const nextConfig: NextConfig = {
   // tries to bundle them. Listing them as server externals keeps them as Node
   // imports at runtime, which is what they expect.
   serverExternalPackages: ["pg", "pg-cloudflare"],
+  //
+  async rewrites() {
+    return [
+      {
+        source: "/trace/static/r.js",
+        destination: "https://eu-assets.i.posthog.com/static/recorder.js",
+      },
+      {
+        source: "/trace/static/d.js",
+        destination: "https://eu-assets.i.posthog.com/static/dead-clicks-autocapture.js",
+      },
+      {
+        source: "/trace/static/x.js",
+        destination: "https://eu-assets.i.posthog.com/static/exception-autocapture.js",
+      },
+      {
+        source: "/trace/static/su.js",
+        destination: "https://eu-assets.i.posthog.com/static/surveys.js",
+      },
+      {
+        source: "/trace/static/w.js",
+        destination: "https://eu-assets.i.posthog.com/static/web-vitals.js",
+      },
+      {
+        source: "/trace/static/tb.js",
+        destination: "https://eu-assets.i.posthog.com/static/toolbar.js",
+      },
+      {
+        source: "/trace/static/h.js",
+        destination: "https://eu-assets.i.posthog.com/static/tracing-headers.js",
+      },
+      {
+        source: "/trace/static/:path*",
+        destination: "https://eu-assets.i.posthog.com/static/:path*",
+      },
+      {
+        source: "/trace/decide",
+        destination: "https://eu.i.posthog.com/decide",
+      },
+      {
+        source: "/trace/:path*",
+        destination: "https://eu.i.posthog.com/:path*",
+      },
+    ];
+  },
 };
 
 const withMDX = createMDX({});

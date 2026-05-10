@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import sustineData from "@/data/sustine-finante.json";
+import { IbanRevealTracker, SustineViewedTracker } from "@/components/analytics/page-trackers";
+import { TrackedContributeLink, TrackedExternalLink } from "@/components/analytics/tracked-link";
 import { Dateline } from "@/components/dateline";
 import { env } from "@/env";
 
@@ -62,6 +64,10 @@ export default function SustinePage() {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-lg) px-6 py-12 sm:py-16">
       <SustineJsonLd />
+      <SustineViewedTracker
+        has_contribute_buttons={Boolean(stripeMonthly && stripeOneOff)}
+        has_iban={Boolean(iban && accountName)}
+      />
 
       <Dateline
         parts={["Notă operațională", "Monitorul.ai", `Sprijin · actualizat ${current.quarter}`]}
@@ -92,23 +98,25 @@ export default function SustinePage() {
         </p>
         <p className="mt-6 max-w-prose text-sm leading-relaxed text-ink-45">
           Codul site-ului:{" "}
-          <a
+          <TrackedExternalLink
             href={REPO_SITE}
+            event={{ destination: "github", source_page: "sustine" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             github.com/ciocan/monitorul.ai
-          </a>
+          </TrackedExternalLink>
           . Codul pipeline-ului de date și al codificării:{" "}
-          <a
+          <TrackedExternalLink
             href={REPO_INDEXER}
+            event={{ destination: "github", source_page: "sustine" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             github.com/ciocan/monitorul-ii
-          </a>
+          </TrackedExternalLink>
           . Metodologia integrală:{" "}
           <Link href="/despre" className="underline underline-offset-4 hover:text-ink-16">
             /despre
@@ -157,22 +165,26 @@ export default function SustinePage() {
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-3">
             {stripeMonthly && stripeOneOff ? (
               <>
-                <a
+                <TrackedContributeLink
                   href={stripeMonthly}
+                  cadence="monthly"
+                  source="main_button"
                   rel="noreferrer"
                   target="_blank"
                   className="label-mono inline-flex items-center border border-ink-16 bg-ink-16 px-5 py-3 text-paper-99 transition-colors hover:bg-ink-30"
                 >
                   Contribuie lunar ›
-                </a>
-                <a
+                </TrackedContributeLink>
+                <TrackedContributeLink
                   href={stripeOneOff}
+                  cadence="one_off"
+                  source="main_button"
                   rel="noreferrer"
                   target="_blank"
                   className="label-mono text-ink-30 underline underline-offset-4 hover:text-ink-16"
                 >
                   sau o singură dată ›
-                </a>
+                </TrackedContributeLink>
               </>
             ) : (
               <span
@@ -189,21 +201,23 @@ export default function SustinePage() {
         </div>
 
         {iban && accountName ? (
-          <div className="mt-8 border border-border bg-paper-96 p-6">
-            <p className="label-mono text-ink-30">Sau prin transfer bancar</p>
-            <p className="mt-2 max-w-prose text-sm leading-relaxed text-ink-30">
-              Fără comisioane de procesare; suma ajunge integral în contul de operare. Recomandat
-              pentru contribuții mai mari sau pentru sponsori instituționali care au nevoie de
-              factură cu CUI.
-            </p>
-            <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
-              <DetailRow label="Beneficiar" value={accountName} />
-              <DetailRow label="IBAN" value={iban} mono />
-              {bic ? <DetailRow label="BIC / SWIFT" value={bic} mono /> : null}
-              {bankName ? <DetailRow label="Bancă" value={bankName} /> : null}
-              <DetailRow label="Monedă" value="EUR" />
-            </dl>
-          </div>
+          <IbanRevealTracker>
+            <div className="mt-8 border border-border bg-paper-96 p-6">
+              <p className="label-mono text-ink-30">Sau prin transfer bancar</p>
+              <p className="mt-2 max-w-prose text-sm leading-relaxed text-ink-30">
+                Fără comisioane de procesare; suma ajunge integral în contul de operare. Recomandat
+                pentru contribuții mai mari sau pentru sponsori instituționali care au nevoie de
+                factură cu CUI.
+              </p>
+              <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
+                <DetailRow label="Beneficiar" value={accountName} />
+                <DetailRow label="IBAN" value={iban} mono />
+                {bic ? <DetailRow label="BIC / SWIFT" value={bic} mono /> : null}
+                {bankName ? <DetailRow label="Bancă" value={bankName} /> : null}
+                <DetailRow label="Monedă" value="EUR" />
+              </dl>
+            </div>
+          </IbanRevealTracker>
         ) : null}
 
         <p className="mt-8 max-w-prose text-sm leading-relaxed text-ink-45">
@@ -259,14 +273,15 @@ export default function SustinePage() {
           <Link href="/termeni" className="underline underline-offset-4 hover:text-ink-30">
             Termeni
           </Link>
-          <a
+          <TrackedExternalLink
             href={`${REPO_SITE}/blob/main/LICENSE`}
+            event={{ destination: "github", source_page: "sustine" }}
             className="underline underline-offset-4 hover:text-ink-30"
             rel="noreferrer"
             target="_blank"
           >
             Cod (AGPL-3.0)
-          </a>
+          </TrackedExternalLink>
         </p>
       </Section>
     </article>

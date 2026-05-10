@@ -1,6 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import { trackFilterApplied, type FilterAppliedProps } from "@/lib/analytics";
 
 // Pure form + Aplică button. The wrapper exists so that:
 //   - Empty inputs (e.g. `chamber=` when "Toate" is selected) are stripped
@@ -12,6 +14,7 @@ import { useRouter } from "next/navigation";
 // upgrades the experience.
 export function CautaFilterForm({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const currentParams = useSearchParams();
   return (
     <form
       action="/cauta"
@@ -66,6 +69,13 @@ export function CautaFilterForm({ children }: { children: React.ReactNode }) {
           if (k === "voice" && trimmed === "first-person") continue;
           sp.set(k, trimmed);
         }
+
+        // Diff against current URL state — fire one `filter_applied` event
+        // per dimension whose presence changed. Multi-year / multi-score
+        // filters fire one event per dimension (not per chip), since the
+        // form Aplică is a single batch action.
+        emitFilterDiff(currentParams, sp);
+
         const qs = sp.toString();
         router.push(qs ? `/cauta?${qs}` : "/cauta");
       }}
@@ -73,4 +83,25 @@ export function CautaFilterForm({ children }: { children: React.ReactNode }) {
       {children}
     </form>
   );
+}
+
+const TRACKED_DIMENSIONS: Array<{
+  dimension: FilterAppliedProps["dimension"];
+  param: string;
+}> = [
+  { dimension: "year", param: "year" },
+  { dimension: "chamber", param: "chamber" },
+  { dimension: "speaker", param: "speaker" },
+  { dimension: "party", param: "party" },
+  { dimension: "procedural", param: "procedural" },
+  { dimension: "sort", param: "sort" },
+];
+
+function emitFilterDiff(prev: URLSearchParams | null, next: URLSearchParams): void {
+  for (const { dimension, param } of TRACKED_DIMENSIONS) {
+    const had = Boolean(prev?.get(param));
+    const has = Boolean(next.get(param));
+    if (had === has) continue;
+    trackFilterApplied({ dimension, action: has ? "added" : "removed" });
+  }
 }

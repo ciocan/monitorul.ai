@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CommitteeViewedTracker, YearSelectorTracker } from "@/components/analytics/page-trackers";
 import { Dateline } from "@/components/dateline";
 import { YearSparkbar } from "@/components/year-sparkbar";
 import { env } from "@/env";
+import { meetingCountBucket } from "@/lib/analytics";
 import {
   agendaOutcomeLabel,
   committeeKindLabel,
@@ -102,6 +104,13 @@ export default async function CommitteeProfilePage({ params, searchParams }: Pag
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
       <CommitteeJsonLd payload={payload} />
+      <CommitteeViewedTracker
+        meeting_count_bucket={meetingCountBucket(payload.totalMeetings)}
+        has_year_filter={Boolean(requestedYear)}
+      />
+      {payload.selectedYear ? (
+        <YearSelectorTracker page="comisii" year={payload.selectedYear} />
+      ) : null}
 
       <Dateline
         parts={[

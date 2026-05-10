@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { LegalViewedTracker } from "@/components/analytics/page-trackers";
 import { Dateline } from "@/components/dateline";
 import { env } from "@/env";
 
@@ -30,6 +31,7 @@ export default function ConfidentialitatePage() {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-md) px-6 py-12 sm:py-16">
       <ConfidentialitateJsonLd />
+      <LegalViewedTracker page="confidentialitate" />
 
       <Dateline parts={["Notă legală", "Monitorul.ai", `Actualizat ${UPDATED}`]} />
 

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { MethodologyViewedTracker } from "@/components/analytics/page-trackers";
+import { TrackedExternalLink } from "@/components/analytics/tracked-link";
 import { Dateline } from "@/components/dateline";
 import { env } from "@/env";
 
@@ -65,6 +67,7 @@ export default function DespreDiscursPage() {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-lg) px-6 py-12 sm:py-16">
       <DespreDiscursJsonLd />
+      <MethodologyViewedTracker page="despre_discurs" />
 
       <Dateline parts={["Notă metodologică", "Analiza discursului", "Monitorul.ai"]} />
 
@@ -225,14 +228,15 @@ export default function DespreDiscursPage() {
           <li className="text-base leading-relaxed text-ink-30">
             <span className="label-mono mr-3 text-alert-civic">Populism</span>
             <em>
-              <a
+              <TrackedExternalLink
                 href="https://populism.byu.edu/"
+                event={{ destination: "other", source_page: "despre" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 Hawkins 2018
-              </a>
+              </TrackedExternalLink>
             </em>{" "}
             — un scor 0/1/2 care indică în ce măsură discursul exprimă o viziune „popor virtuos
             versus elită coruptă”. Scorul este holistic, nu o sumă de marcheri.{" "}
@@ -243,23 +247,25 @@ export default function DespreDiscursPage() {
           <li className="text-base leading-relaxed text-ink-30">
             <span className="label-mono mr-3 text-alert-civic">Anti-pluralism</span>
             <em>
-              <a
+              <TrackedExternalLink
                 href="https://www.v-dem.net/data/v-party-dataset/"
+                event={{ destination: "other", source_page: "despre" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 V-Party
-              </a>{" "}
+              </TrackedExternalLink>{" "}
               /{" "}
-              <a
+              <TrackedExternalLink
                 href="https://www.v-dem.net/"
+                event={{ destination: "other", source_page: "despre" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 V-Dem
-              </a>
+              </TrackedExternalLink>
             </em>{" "}
             — un scor 0/1/2 care indică în ce măsură discursul atacă condițiile multi-partidismului
             democratic: delegitimarea opoziției, ostilitatea față de presă, atacul la justiție,
@@ -268,14 +274,15 @@ export default function DespreDiscursPage() {
           <li className="text-base leading-relaxed text-ink-30">
             <span className="label-mono mr-3 text-azure-3">Calitate deliberativă</span>
             <em>
-              <a
+              <TrackedExternalLink
                 href="https://www.cambridge.org/core/books/foundations-of-deliberative-democracy/2A37BAB10D8B0D8F067B0C66AC2A56AB"
+                event={{ destination: "other", source_page: "despre" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 DQI Steiner-Bächtiger
-              </a>
+              </TrackedExternalLink>
             </em>{" "}
             — singurul cadru pozitiv. Șase sub-codări care măsoară împreună{" "}
             <em>cât de bine argumentează</em> vorbitorul: nivelul justificării, conținutul
@@ -285,14 +292,15 @@ export default function DespreDiscursPage() {
           <li className="text-base leading-relaxed text-ink-30">
             <span className="label-mono mr-3 text-ink-30">Voce</span>
             <em>
-              <a
+              <TrackedExternalLink
                 href="https://github.com/ciocan/monitorul-ii/blob/main/prompts/voice_classifier_v1.md"
+                event={{ destination: "github", source_page: "despre" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 monitorul-ii voice@v1
-              </a>
+              </TrackedExternalLink>
             </em>{" "}
             — pentru fiecare marcher, ce voce poartă: vorbitorul însuși, citat, vorbire indirectă,
             negat, ipotetic, apofază („nu spun X, dar...”), atribuire echivocă („unii spun că...”),

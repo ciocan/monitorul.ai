@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 
+import {
+  DiscourseFilterTracker,
+  RegisterViewedTracker,
+} from "@/components/analytics/page-trackers";
 import { ConfidenceToggle } from "@/components/discourse/confidence-toggle";
 import { CrossTabHeatmap } from "@/components/discourse/cross-tab-heatmap";
 import { Dateline } from "@/components/dateline";
@@ -108,6 +112,11 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
 
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
+      <RegisterViewedTracker register="statistici" year={year} has_year_filter={year !== null} />
+      <DiscourseFilterTracker
+        voice={discourseParams.voiceMode === "all" ? "all" : "speaker_first_person"}
+        confidence={discourseParams.confidenceMin === 0.7 ? "07" : "all"}
+      />
       <Dateline parts={["Discurs analizat", yearLabel, chamber ?? "Ambele camere"]} />
       <header className="mt-6 border-b border-border pb-6">
         <h1 className="font-display text-4xl leading-tight text-ink-16 sm:text-5xl">

@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { DocumentViewedTracker } from "@/components/analytics/page-trackers";
+import { TrackedPdfLink } from "@/components/analytics/tracked-link";
 import { CuprinsMarkerIndicator } from "@/components/discourse/cuprins-marker-indicator";
 import { Dateline } from "@/components/dateline";
 import { DocumentStatStrip } from "@/components/discourse/document-stat-strip";
@@ -131,6 +133,12 @@ export default async function DocumentPage({ params, searchParams }: PageProps) 
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
       <DocumentJsonLd doc={doc} />
+      <DocumentViewedTracker
+        year={doc.year}
+        agenda_item_count={agenda.length}
+        has_committee_meetings={children.some((c) => c.grain === "committee-meetings")}
+        has_pdf_link={Boolean(pdfHref)}
+      />
       <ScrollToHash />
 
       <DocumentStickyHeader
@@ -168,7 +176,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps) 
           />
         </dl>
         <DocumentCounts doc={doc} />
-        {pdfHref ? <PdfDownloadLink href={pdfHref} /> : null}
+        {pdfHref ? <PdfDownloadLink href={pdfHref} year={doc.year} /> : null}
       </header>
 
       {discourseSummary.codedCount > 0 ? (
@@ -284,10 +292,11 @@ function DocumentCounts({ doc }: { doc: MoDocument }) {
   );
 }
 
-function PdfDownloadLink({ href }: { href: string }) {
+function PdfDownloadLink({ href, year }: { href: string; year: number }) {
   return (
-    <a
+    <TrackedPdfLink
       href={href}
+      year={year}
       target="_blank"
       rel="noopener"
       className="group/pdf mt-8 inline-flex items-center gap-3 border border-border bg-paper-99 px-4 py-3 text-ink-16 transition-colors hover:bg-paper-96 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-30"
@@ -297,7 +306,7 @@ function PdfDownloadLink({ href }: { href: string }) {
       <span aria-hidden className="font-mono-meta text-xs text-ink-45">
         ↗
       </span>
-    </a>
+    </TrackedPdfLink>
   );
 }
 

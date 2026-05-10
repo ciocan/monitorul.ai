@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { McpLandingViewedTracker } from "@/components/analytics/page-trackers";
 import { Dateline } from "@/components/dateline";
 import { McpConfigBlock } from "@/components/mcp-config-block";
 import { McpEndpointCopyButton, McpEndpointUrl } from "@/components/mcp-endpoint-url";
@@ -93,6 +94,7 @@ export default function McpPage() {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-lg) px-6 py-12 sm:py-16">
       <McpJsonLd />
+      <McpLandingViewedTracker />
 
       <Dateline parts={["Server MCP", "Monitorul.ai", "Acces public · Google OAuth"]} />
 

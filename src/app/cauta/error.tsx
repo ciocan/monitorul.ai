@@ -44,6 +44,16 @@ export default function CautaError({
         )}
       </p>
 
+      <p className="label-mono mt-4 text-xs text-ink-45">
+        Indexul rulează pe capacitate finită, finanțată din contribuții.{" "}
+        <Link
+          href="/sustine"
+          className="text-ink-30 underline underline-offset-4 hover:text-ink-16"
+        >
+          Cum este susținut proiectul →
+        </Link>
+      </p>
+
       <div className="mt-8 max-w-2xl">
         <SiteSearch size="lg" />
       </div>

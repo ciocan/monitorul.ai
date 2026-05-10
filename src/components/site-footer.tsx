@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { TrackedExternalLink } from "@/components/analytics/tracked-link";
+
 export function SiteFooter() {
   return (
     <footer className="mt-16 border-t border-border bg-paper-96">
@@ -15,34 +17,37 @@ export function SiteFooter() {
           <p className="label-mono text-ink-30">Sursa</p>
           <ul className="space-y-1 text-sm text-ink-30">
             <li>
-              <a
+              <TrackedExternalLink
                 href="https://monitoruloficial.ro"
+                event={{ destination: "monitoruloficial", source_page: "footer" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 monitoruloficial.ro
-              </a>
+              </TrackedExternalLink>
             </li>
             <li>
-              <a
+              <TrackedExternalLink
                 href="https://www.cdep.ro"
+                event={{ destination: "cdep", source_page: "footer" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 Camera Deputaților
-              </a>
+              </TrackedExternalLink>
             </li>
             <li>
-              <a
+              <TrackedExternalLink
                 href="https://www.senat.ro"
+                event={{ destination: "senat", source_page: "footer" }}
                 className="underline underline-offset-4 hover:text-ink-16"
                 rel="noreferrer"
                 target="_blank"
               >
                 Senatul României
-              </a>
+              </TrackedExternalLink>
             </li>
           </ul>
         </div>
@@ -111,22 +116,24 @@ export function SiteFooter() {
             <Link href="/termeni" className="underline underline-offset-4 hover:text-ink-30">
               Termeni
             </Link>
-            <a
+            <TrackedExternalLink
               href="https://github.com/ciocan/monitorul-ii"
+              event={{ destination: "github", source_page: "footer" }}
               className="underline underline-offset-4 hover:text-ink-30"
               rel="noreferrer"
               target="_blank"
             >
               Pipeline (AGPL-3.0)
-            </a>
-            <a
+            </TrackedExternalLink>
+            <TrackedExternalLink
               href="https://github.com/ciocan/monitorul.ai"
+              event={{ destination: "github", source_page: "footer" }}
               className="underline underline-offset-4 hover:text-ink-30"
               rel="noreferrer"
               target="_blank"
             >
               Site (AGPL-3.0)
-            </a>
+            </TrackedExternalLink>
           </nav>
         </div>
       </div>

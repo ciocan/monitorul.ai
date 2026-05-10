@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { HomeViewedTracker } from "@/components/analytics/page-trackers";
 import { FRAMEWORK_FG } from "@/components/discourse/framework-badge";
 import { McpEndpointUrl } from "@/components/mcp-endpoint-url";
 import { SiteSearch } from "@/components/site-search";
@@ -49,6 +50,7 @@ export default async function Home() {
 
   return (
     <div className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-16 sm:py-20">
+      <HomeViewedTracker />
       <h1 className="font-display max-w-4xl text-4xl leading-[1.05] text-ink-16 sm:text-5xl lg:text-6xl">
         Stenogramele Parlamentului României, citabile pe web.
       </h1>

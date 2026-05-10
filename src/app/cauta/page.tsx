@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { SearchTracker } from "@/components/analytics/search-tracker";
 import { ActiveFilters } from "@/components/cauta/active-filters";
 import { FilterPanel } from "@/components/cauta/filter-panel";
 import { Pagination } from "@/components/pagination";
 import { SiteSearch } from "@/components/site-search";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
+import { hasDiacritics } from "@/lib/analytics";
+import type { SearchPerformedProps } from "@/lib/analytics";
 import { formatCount, formatDate, speechWordCount } from "@/lib/format";
 import {
   type PartyEnumerationRow,
@@ -17,6 +20,7 @@ import {
 } from "@/lib/search";
 import {
   type CautaSearchParams,
+  type SortSlug,
   buildCautaHref,
   parseCautaSearchParams,
 } from "@/lib/search-params";
@@ -182,50 +186,99 @@ async function SearchResults({
   });
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const safePage = Math.min(params.page, totalPages);
+  const mode: "hybrid" | "bm25" = result.mode === "rrf" ? "hybrid" : "bm25";
+  const performed: SearchPerformedProps = {
+    query_length: params.q.length,
+    query_word_count: params.q.trim() ? params.q.trim().split(/\s+/).length : 0,
+    has_diacritics: hasDiacritics(params.q),
+    filter_count: countFilterDimensions(params),
+    filter_dimensions: listFilterDimensions(params),
+    year_count: params.years.length,
+    sort: sortToProp(params.sort),
+    result_count: result.total,
+    mode,
+    took_ms: result.tookMs,
+    page: safePage,
+  };
 
   return (
-    <section aria-labelledby="rezultate" className="mt-10">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 id="rezultate" className="label-mono text-ink-30">
-          {result.total > 0
-            ? `${formatCount(result.total)} ${result.total === 1 ? "rezultat" : "rezultate"}`
-            : "Niciun rezultat"}
-        </h2>
-        <p
-          className="label-mono text-ink-45"
-          data-tabular-nums=""
-          title={result.mode === "rrf" ? "Hibrid: BM25 + kNN (BGE-M3) cu fuziune RRF" : "Doar BM25"}
-        >
-          <span className="text-ink-30">{result.mode === "rrf" ? "Hibrid" : "BM25"}</span> ·{" "}
-          {result.tookMs} ms
-        </p>
-      </div>
+    <SearchTracker performed={performed} resultMeta={{ page: safePage, mode }}>
+      <section aria-labelledby="rezultate" className="mt-10">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 id="rezultate" className="label-mono text-ink-30">
+            {result.total > 0
+              ? `${formatCount(result.total)} ${result.total === 1 ? "rezultat" : "rezultate"}`
+              : "Niciun rezultat"}
+          </h2>
+          <p
+            className="label-mono text-ink-45"
+            data-tabular-nums=""
+            title={
+              result.mode === "rrf" ? "Hibrid: BM25 + kNN (BGE-M3) cu fuziune RRF" : "Doar BM25"
+            }
+          >
+            <span className="text-ink-30">{result.mode === "rrf" ? "Hibrid" : "BM25"}</span> ·{" "}
+            {result.tookMs} ms
+          </p>
+        </div>
 
-      {result.hits.length === 0 ? (
-        <NoResults params={params} />
-      ) : (
-        <>
-          <ol className="mt-6 divide-y divide-border border-y border-border">
-            {result.hits.map((hit) => (
-              <SpeechHit
-                key={hit.record_id}
-                hit={hit}
-                snippet={result.highlights?.[hit.record_id]}
-              />
-            ))}
-          </ol>
-          <Pagination
-            page={safePage}
-            totalPages={totalPages}
-            pageHref={(p) => buildCautaHref(params, { page: p })}
-          />
-        </>
-      )}
-    </section>
+        {result.hits.length === 0 ? (
+          <NoResults params={params} />
+        ) : (
+          <>
+            <ol className="mt-6 divide-y divide-border border-y border-border">
+              {result.hits.map((hit, idx) => (
+                <SpeechHit
+                  key={hit.record_id}
+                  hit={hit}
+                  snippet={result.highlights?.[hit.record_id]}
+                  position={(safePage - 1) * PAGE_SIZE + idx + 1}
+                />
+              ))}
+            </ol>
+            <Pagination
+              page={safePage}
+              totalPages={totalPages}
+              pageHref={(p) => buildCautaHref(params, { page: p })}
+            />
+          </>
+        )}
+      </section>
+    </SearchTracker>
   );
 }
 
-function SpeechHit({ hit, snippet }: { hit: MoSpeech; snippet?: string }) {
+function countFilterDimensions(p: CautaSearchParams): number {
+  return listFilterDimensions(p).length;
+}
+
+function listFilterDimensions(p: CautaSearchParams): SearchPerformedProps["filter_dimensions"] {
+  const out: SearchPerformedProps["filter_dimensions"] = [];
+  if (p.years.length > 0) out.push("year");
+  if (p.dateFrom) out.push("date_from");
+  if (p.dateTo) out.push("date_to");
+  if (p.chamber) out.push("chamber");
+  if (p.speakerSlug) out.push("speaker");
+  if (p.partySlug) out.push("party");
+  if (p.includeProcedural) out.push("procedural");
+  return out;
+}
+
+function sortToProp(s: SortSlug): SearchPerformedProps["sort"] {
+  if (s === "date-desc") return "date_desc";
+  if (s === "date-asc") return "date_asc";
+  return "relevance";
+}
+
+function SpeechHit({
+  hit,
+  snippet,
+  position,
+}: {
+  hit: MoSpeech;
+  snippet?: string;
+  position: number;
+}) {
   const sessionDate = formatDate(hit.session_date);
   const speaker = hit.speaker.name_search || hit.speaker.name_raw;
   const fallbackText = hit.text ? excerpt(hit.text, 220) : null;
@@ -255,8 +308,15 @@ function SpeechHit({ hit, snippet }: { hit: MoSpeech; snippet?: string }) {
   const chamberMeta = [hit.chamber, hit.legislature ? `legislatura ${hit.legislature}` : null]
     .filter(Boolean)
     .join(" · ");
+  const hasDiscourseMarkers = Boolean(hit.enrichments?.discourse);
   return (
-    <li className="px-1 py-6">
+    <li
+      className="px-1 py-6"
+      data-result-position={position}
+      data-result-kind="speech"
+      data-result-has-speaker={personSlug ? "1" : "0"}
+      data-result-has-discourse={hasDiscourseMarkers ? "1" : "0"}
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         {chamberMeta ? <p className="label-mono text-ink-45">{chamberMeta}</p> : <span />}
         <div className="flex items-baseline gap-4">

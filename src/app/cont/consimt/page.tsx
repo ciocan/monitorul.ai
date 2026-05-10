@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { ConsentViewedTracker } from "@/components/analytics/page-trackers";
+import { McpOauthCompletedForm } from "@/components/analytics/tracked-submit";
 import { Dateline } from "@/components/dateline";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
@@ -143,6 +145,7 @@ export default async function ContConsimtPage({ searchParams }: PageProps) {
 
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-md) px-6 py-8 sm:py-10">
+      <ConsentViewedTracker client_name={clientName} />
       <Dateline parts={["Cont", "Consimțământ", "Monitorul.ai"]} />
       <header className="mt-5 border-b border-border pb-5">
         <h1 className="font-display text-3xl leading-[1.05] text-ink-16 sm:text-4xl">
@@ -193,12 +196,12 @@ export default async function ContConsimtPage({ searchParams }: PageProps) {
 
       <section className="mt-5 border-t border-border pt-5">
         <div className="flex flex-wrap items-center gap-3">
-          <form action={acceptConsentAction}>
+          <McpOauthCompletedForm action={acceptConsentAction} clientName={clientName}>
             <input type="hidden" name="consent_code" value={consentCode} />
             <Button type="submit" size="lg" variant="default">
               Acceptă și conectează
             </Button>
-          </form>
+          </McpOauthCompletedForm>
           <form action={denyConsentAction}>
             <input type="hidden" name="consent_code" value={consentCode} />
             <Button type="submit" size="lg" variant="outline">

@@ -119,6 +119,13 @@ export const env = createEnv({
   },
   client: {
     NEXT_PUBLIC_SITE_URL: z.url().default("https://monitorul.ai"),
+    // PostHog Cloud EU project key. When unset, the analytics module exports
+    // no-op stubs — the site builds and runs without PostHog wired in, and
+    // the provider skips `posthog.init()` entirely. Privacy contract for the
+    // collected payload is published on `/confidentialitate` and pinned in
+    // CLAUDE.md → "Analytics rule" — both files travel together.
+    NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
+    NEXT_PUBLIC_POSTHOG_HOST: z.string().default("https://eu.i.posthog.com"),
   },
   shared: {
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -127,6 +134,8 @@ export const env = createEnv({
   // time, so only client + shared keys need to be listed here.
   experimental__runtimeEnv: {
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
     NODE_ENV: process.env.NODE_ENV,
   },
   // Treat `KEY=` (empty string) as undefined so optional vars and defaults work.

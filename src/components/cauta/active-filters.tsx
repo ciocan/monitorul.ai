@@ -1,13 +1,21 @@
+"use client";
+
 import Link from "next/link";
 import { X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { trackFilterApplied, type FilterAppliedProps } from "@/lib/analytics";
 import { formatDate } from "@/lib/format";
 import { type CautaSearchParams, activeFilterCount, buildCautaHref } from "@/lib/search-params";
 
 interface ActiveFilterChip {
   label: string;
   href: string;
+  // Dimension drives the `filter_applied { action: "removed" }` event fired
+  // when the chip is clicked. Multi-year emits one chip per year — they all
+  // share dimension "year". `null` for chips that aren't in the tracked v1
+  // dimension set (discourse chips below).
+  dimension: FilterAppliedProps["dimension"] | null;
 }
 
 export interface ActiveFiltersProps {
@@ -33,6 +41,7 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
         href: buildCautaHref(params, {
           years: params.years.filter((other) => other !== y),
         }),
+        dimension: "year",
       });
     }
   } else if (params.dateFrom || params.dateTo) {
@@ -45,6 +54,9 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
     chips.push({
       label: span,
       href: buildCautaHref(params, { dateFrom: "", dateTo: "" }),
+      // Date range maps onto the `year` dimension for analytics purposes —
+      // both target the same temporal-filter slot in the user's mental model.
+      dimension: "year",
     });
   }
 
@@ -52,6 +64,7 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
     chips.push({
       label: params.chamber,
       href: buildCautaHref(params, { chamber: null }),
+      dimension: "chamber",
     });
   }
 
@@ -59,6 +72,7 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
     chips.push({
       label: speakerLabel ?? params.speakerSlug.replace(/-/g, " "),
       href: buildCautaHref(params, { speakerSlug: "" }),
+      dimension: "speaker",
     });
   }
 
@@ -66,6 +80,7 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
     chips.push({
       label: partyLabel ?? params.partySlug.toUpperCase(),
       href: buildCautaHref(params, { partySlug: "" }),
+      dimension: "party",
     });
   }
 
@@ -73,15 +88,19 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
     chips.push({
       label: "Include intervenții procedurale",
       href: buildCautaHref(params, { includeProcedural: false }),
+      dimension: "procedural",
     });
   }
 
+  // Discourse chips fall outside the v1 `FilterAppliedProps["dimension"]`
+  // enum — see the `discourse_filter_applied` event for their analogue.
   for (const score of [...params.hawkinsScores].sort((a, b) => a - b)) {
     chips.push({
       label: `H = ${score}`,
       href: buildCautaHref(params, {
         hawkinsScores: params.hawkinsScores.filter((s) => s !== score),
       }),
+      dimension: null,
     });
   }
   for (const score of [...params.vpartyScores].sort((a, b) => a - b)) {
@@ -90,24 +109,28 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
       href: buildCautaHref(params, {
         vpartyScores: params.vpartyScores.filter((s) => s !== score),
       }),
+      dimension: null,
     });
   }
   if (params.dqiLevelMin !== null) {
     chips.push({
       label: `DQI ≥ L${params.dqiLevelMin}`,
       href: buildCautaHref(params, { dqiLevelMin: null }),
+      dimension: null,
     });
   }
   if (params.voiceMode === "all") {
     chips.push({
       label: "Toate vocile",
       href: buildCautaHref(params, { voiceMode: "first-person" }),
+      dimension: null,
     });
   }
   if (params.confidenceMin !== null) {
     chips.push({
       label: "Doar codări ≥ 0.7",
       href: buildCautaHref(params, { confidenceMin: null }),
+      dimension: null,
     });
   }
 
@@ -121,7 +144,18 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
               `asChild` lets it become a Link without nesting interactive
               elements. */}
           <Badge variant="outline" asChild className="gap-1.5 px-2.5 py-1 text-xs text-ink-30">
-            <Link href={chip.href}>
+            <Link
+              href={chip.href}
+              onClick={
+                chip.dimension
+                  ? () =>
+                      trackFilterApplied({
+                        dimension: chip.dimension as FilterAppliedProps["dimension"],
+                        action: "removed",
+                      })
+                  : undefined
+              }
+            >
               <span>{chip.label}</span>
               <X className="size-3" aria-hidden />
               <span className="sr-only">Elimină filtrul</span>
@@ -145,6 +179,12 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
             voiceMode: "first-person",
             confidenceMin: null,
           })}
+          onClick={() =>
+            // `dimension: "year"` is the sentinel pick for the reset-all
+            // event; the schema requires a dimension but the action is the
+            // semantic that matters.
+            trackFilterApplied({ dimension: "year", action: "reset_all" })
+          }
           className="label-mono text-ink-45 underline decoration-paper-91 underline-offset-4 transition-colors hover:decoration-ink-30 hover:text-ink-30"
         >
           Resetează filtrele

@@ -677,13 +677,24 @@ function resolvePublicOrigin(req: Request): string {
 // request landing here has a verified bearer token, so `session.userId` is
 // always present and feeds both `requestContext` (for query-log attribution)
 // and the per-user limiters.
-function rateLimitedResponse(decision: { limit: number; reset: number }, scope: string): Response {
+function rateLimitedResponse(
+  decision: { limit: number; reset: number },
+  scope: string,
+  origin: string,
+): Response {
   const retryAfterMs = Math.max(0, decision.reset - Date.now());
+  // `support_url` names the operational cause of the cap (finite, contribution-
+  // funded capacity) so the LLM client can pass it through to the end user.
+  // Mirrors the same aside on the public /cauta and root error surfaces.
+  const supportUrl = origin ? `${origin}/sustine` : "/sustine";
   return new Response(
     JSON.stringify({
       error: `Rate limit exceeded (${scope}).`,
       limit: decision.limit,
       retry_after_ms: retryAfterMs,
+      support_url: supportUrl,
+      message:
+        "Indexul rulează pe capacitate finită, finanțată din contribuții. Vezi support_url pentru context.",
     }),
     {
       status: 429,
@@ -707,8 +718,8 @@ async function handlerWithRateLimit(req: Request, session: { userId: string }): 
     generalLimiter().limit(`g:ip:${ip}`),
     userLimiter().limit(`g:user:${userId}`),
   ]);
-  if (!generalIp.success) return rateLimitedResponse(generalIp, "general:ip");
-  if (!generalUser.success) return rateLimitedResponse(generalUser, "general:user");
+  if (!generalIp.success) return rateLimitedResponse(generalIp, "general:ip", origin);
+  if (!generalUser.success) return rateLimitedResponse(generalUser, "general:user", origin);
   // Heavy-tier sniff: peek at the body without consuming it. Streamable HTTP
   // sends JSON-RPC; we look at the parsed `params.name` / `params.arguments`
   // shape. If body parsing fails (non-JSON, GET request), skip the heavy gate.
@@ -736,8 +747,8 @@ async function handlerWithRateLimit(req: Request, session: { userId: string }): 
             heavyLimiter().limit(`h:ip:${ip}`),
             userHeavyLimiter().limit(`h:user:${userId}`),
           ]);
-          if (!heavyIp.success) return rateLimitedResponse(heavyIp, "heavy:ip");
-          if (!heavyUser.success) return rateLimitedResponse(heavyUser, "heavy:user");
+          if (!heavyIp.success) return rateLimitedResponse(heavyIp, "heavy:ip", origin);
+          if (!heavyUser.success) return rateLimitedResponse(heavyUser, "heavy:user", origin);
         }
       }
       // Reconstruct the request with the body still readable downstream.

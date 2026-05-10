@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { PersonPageViewedTracker, YearSelectorTracker } from "@/components/analytics/page-trackers";
 import { ContributionsGraph } from "@/components/contributions-graph";
 import { Dateline } from "@/components/dateline";
 import { PersonDiscoursePanel } from "@/components/discourse/person-discourse-panel";
@@ -10,6 +11,7 @@ import { SectionOpener } from "@/components/section-opener";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { YearlyActivityChart } from "@/components/yearly-activity-chart";
 import { env } from "@/env";
+import { speechCountBucket } from "@/lib/analytics";
 import { parseDiscourseParams } from "@/lib/discourse-params";
 import { formatCount, formatDate, speechExcerpt, speechMeta, speechWordCount } from "@/lib/format";
 import { personDiscourseTrajectory, personPage } from "@/lib/search";
@@ -157,6 +159,13 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
       <PersonJsonLd person={person} />
+      <PersonPageViewedTracker
+        speech_count_bucket={speechCountBucket(stats.speech_count)}
+        has_year_filter={Boolean(year)}
+        has_day_filter={Boolean(day)}
+        page={safePage}
+      />
+      {selectedYear ? <YearSelectorTracker page="person" year={selectedYear} /> : null}
 
       <Dateline
         parts={["Registrul politicienilor", currentMandate?.role, currentMandate?.party, lifespan]}

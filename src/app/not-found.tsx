@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { NotFoundViewedTracker } from "@/components/analytics/page-trackers";
 import { SiteSearch } from "@/components/site-search";
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <div className="mx-auto w-full max-w-(--breakpoint-md) px-6 py-20">
+      <NotFoundViewedTracker kind="global" />
       <p className="label-mono text-ink-45">Eroare 404</p>
       <h1 className="font-display mt-3 text-3xl text-ink-16 sm:text-4xl">Pagină neidentificată</h1>
       <p className="mt-4 max-w-prose text-base leading-relaxed text-ink-30">

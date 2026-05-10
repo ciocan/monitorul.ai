@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { MethodologyViewedTracker } from "@/components/analytics/page-trackers";
+import { TrackedExternalLink } from "@/components/analytics/tracked-link";
 import { Dateline } from "@/components/dateline";
 import { env } from "@/env";
 
@@ -58,6 +60,7 @@ export default function DesprePage() {
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-lg) px-6 py-12 sm:py-16">
       <DespreJsonLd />
+      <MethodologyViewedTracker page="despre" />
 
       <Dateline parts={["Notă metodologică", "Monitorul.ai", "Arhivă publică"]} />
 
@@ -117,14 +120,15 @@ export default function DesprePage() {
         </p>
         <p>
           Site-ul nu este o sursă oficială. Pentru documentul cu efect juridic consultați{" "}
-          <a
+          <TrackedExternalLink
             href="https://monitoruloficial.ro"
+            event={{ destination: "monitoruloficial", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             monitoruloficial.ro
-          </a>
+          </TrackedExternalLink>
           . Monitorul.ai este un strat de citare și descoperire peste documentele publice;
           autoritatea juridică rămâne la sursă.
         </p>
@@ -337,14 +341,15 @@ export default function DesprePage() {
           reproductibil în timp.
         </p>
         <p className="mt-4">
-          <a
+          <TrackedExternalLink
             href="https://github.com/ciocan/monitorul-ii/issues"
+            event={{ destination: "github", source_page: "despre" }}
             className="label-mono inline-flex border border-ink-16 bg-ink-16 px-4 py-2 text-paper-99 transition-colors hover:bg-ink-30"
             rel="noreferrer"
             target="_blank"
           >
             Deschide un issue ›
-          </a>
+          </TrackedExternalLink>
         </p>
         <p className="mt-6 text-sm leading-relaxed text-ink-45">
           Cererile de retragere a unor conținuturi sensibile (de exemplu numele unei părți civile
@@ -357,35 +362,38 @@ export default function DesprePage() {
       <Section id="sursa" title="Surse și licență">
         <p>
           Stenogramele provin din PDF-urile publicate de Regia Autonomă „Monitorul Oficial” pe{" "}
-          <a
+          <TrackedExternalLink
             href="https://monitoruloficial.ro"
+            event={{ destination: "monitoruloficial", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             monitoruloficial.ro
-          </a>
+          </TrackedExternalLink>
           . Sunt acte publice oficiale, reproduse aici fără modificări.
         </p>
         <p>
           Site-urile oficiale ale celor două camere —{" "}
-          <a
+          <TrackedExternalLink
             href="https://www.cdep.ro"
+            event={{ destination: "cdep", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             cdep.ro
-          </a>{" "}
+          </TrackedExternalLink>{" "}
           și{" "}
-          <a
+          <TrackedExternalLink
             href="https://www.senat.ro"
+            event={{ destination: "senat", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             senat.ro
-          </a>{" "}
+          </TrackedExternalLink>{" "}
           — rămân autoritatea pentru componența curentă, calendarul ședințelor și textul
           inițiativelor legislative. Pentru actele cu efect juridic (legi, decrete, hotărâri de
           guvern, ordonanțe), sursa este <em>Monitorul Oficial Partea I</em>, care nu face obiectul
@@ -393,23 +401,25 @@ export default function DesprePage() {
         </p>
         <p>
           Codul-sursă al pipeline-ului este public la{" "}
-          <a
+          <TrackedExternalLink
             href="https://github.com/ciocan/monitorul-ii"
+            event={{ destination: "github", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             github.com/ciocan/monitorul-ii
-          </a>
+          </TrackedExternalLink>
           ; codul site-ului este public la{" "}
-          <a
+          <TrackedExternalLink
             href="https://github.com/ciocan/monitorul.ai"
+            event={{ destination: "github", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             github.com/ciocan/monitorul.ai
-          </a>
+          </TrackedExternalLink>
           . Schemele și mappings-urile sunt versionate alături de cod, deci orice intrare din arhivă
           poate fi reconstituită din sursă.
         </p>
@@ -424,14 +434,15 @@ export default function DesprePage() {
       <Section id="pipeline" title="Pipeline-ul în opt pași">
         <p>
           Ingestia este realizată de pipeline-ul deschis{" "}
-          <a
+          <TrackedExternalLink
             href="https://github.com/ciocan/monitorul-ii"
+            event={{ destination: "github", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             monitorul-ii
-          </a>
+          </TrackedExternalLink>
           , care rulează independent de acest site. Datele trec prin opt etape, fiecare cu
           răspundere clară și producând un artefact verificabil pe disc:
         </p>
@@ -605,14 +616,15 @@ export default function DesprePage() {
           conține ID-ul intern Better Auth pentru toate apelurile prin server-ul MCP. Stocăm
           momentul, tool-call-ul și argumentele — nu rezultatele și nu textul documentelor extrase.
           Schema completă este în repo:{" "}
-          <a
+          <TrackedExternalLink
             href="https://github.com/ciocan/monitorul.ai/blob/main/docs/architecture.md"
+            event={{ destination: "github", source_page: "despre" }}
             className="underline underline-offset-4 hover:text-ink-16"
             rel="noreferrer"
             target="_blank"
           >
             docs/architecture.md
-          </a>
+          </TrackedExternalLink>
           .
         </p>
         <p>

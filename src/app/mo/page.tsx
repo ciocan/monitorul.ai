@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { RegisterViewedTracker, YearSelectorTracker } from "@/components/analytics/page-trackers";
 import { Dateline } from "@/components/dateline";
 import { YearSparkbar } from "@/components/year-sparkbar";
 import { env } from "@/env";
@@ -70,6 +71,12 @@ export default async function SessionsIndexPage({ searchParams }: PageProps) {
   return (
     <div className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
       <SessionsJsonLd selectedYear={selectedYear} archiveSessionTotal={archiveSessionTotal} />
+      <RegisterViewedTracker
+        register="mo"
+        year={selectedYear ?? null}
+        has_year_filter={requestedYear !== undefined}
+      />
+      {selectedYear ? <YearSelectorTracker page="mo" year={selectedYear} /> : null}
 
       <Dateline
         parts={[

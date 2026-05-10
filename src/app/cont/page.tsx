@@ -3,8 +3,10 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AccountViewedTracker } from "@/components/analytics/page-trackers";
 import { Dateline } from "@/components/dateline";
 import { Button } from "@/components/ui/button";
+import type { AccountViewedProps } from "@/lib/analytics";
 import { auth } from "@/lib/auth";
 
 import { listAuthorizedClients, revokeClientAction, signOutAction } from "./actions";
@@ -49,6 +51,15 @@ function parseClientMetadata(raw: string | null): Record<string, unknown> | null
   }
 }
 
+function authorizedClientBucket(
+  count: number,
+): AccountViewedProps["authorized_client_count_bucket"] {
+  if (count === 0) return "0";
+  if (count === 1) return "1";
+  if (count <= 5) return "2-5";
+  return "6+";
+}
+
 export default async function ContPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/cont/intra");
@@ -57,6 +68,9 @@ export default async function ContPage() {
 
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-md) px-6 py-12 sm:py-16">
+      <AccountViewedTracker
+        authorized_client_count_bucket={authorizedClientBucket(clients.length)}
+      />
       <Dateline parts={["Cont", session.user.email, "Monitorul.ai"]} />
       <header className="mt-6 border-b border-border pb-8">
         <h1 className="font-display text-4xl leading-[1.05] text-ink-16 sm:text-5xl">Cont</h1>
