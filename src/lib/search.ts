@@ -2411,6 +2411,13 @@ interface DiscourseStatsFilters {
   confidenceMin?: number | null;
 }
 
+// Floor for the discourse-stats date range. Matches the documented coverage
+// start in /despre/discurs ("speech-uri substanțiale începând cu 2020"). The
+// upstream index has a small (~5k docs) 2019 tail from an early enrichment
+// run; we exclude it so user-facing surfaces stay consistent with the
+// methodology page.
+const DISCOURSE_STATS_DATE_FLOOR = "2020-01-01";
+
 function buildSystemFilters(opts: DiscourseStatsFilters): QueryDslQueryContainer[] {
   const filters: QueryDslQueryContainer[] = [
     { term: { is_substantive: true } },
@@ -2420,6 +2427,8 @@ function buildSystemFilters(opts: DiscourseStatsFilters): QueryDslQueryContainer
     filters.push({
       range: { session_date: { gte: `${opts.year}-01-01`, lte: `${opts.year}-12-31` } },
     });
+  } else {
+    filters.push({ range: { session_date: { gte: DISCOURSE_STATS_DATE_FLOOR } } });
   }
   if (opts.chamber) filters.push({ term: { chamber: opts.chamber } });
   if ((opts.voiceMode ?? "first-person") === "first-person") {
@@ -2503,7 +2512,7 @@ export async function discourseTimeSeries(
     }));
     return {
       result: {
-        year: opts.year ?? new Date().getUTCFullYear(),
+        year: opts.year ?? null,
         monthly,
       },
       esTookMs: res.took ?? null,
@@ -2564,7 +2573,7 @@ export async function discourseHvCrosstab(
     }
     return {
       result: {
-        year: opts.year ?? new Date().getUTCFullYear(),
+        year: opts.year ?? null,
         total,
         cells,
         illiberalCount: illiberal,
@@ -2614,14 +2623,20 @@ export async function topPoliticiansByDiscourseRate(
             sample_name: {
               top_hits: {
                 size: 1,
-                _source: ["speaker.name_search", "speaker.name_raw"],
+                // Sort desc on session_date so `party_group_at_time` reflects
+                // the politician's most recent coded affiliation, not a random
+                // sample from across their career.
+                sort: [{ session_date: { order: "desc" } }],
+                _source: ["speaker.name_search", "speaker.name_raw", "speaker.party_group_at_time"],
               },
             },
           },
         },
       },
     });
-    type SampleSrc = { speaker?: { name_search?: string; name_raw?: string } };
+    type SampleSrc = {
+      speaker?: { name_search?: string; name_raw?: string; party_group_at_time?: string | null };
+    };
     type PersonBucket = {
       key: string;
       doc_count: number;
@@ -2630,14 +2645,25 @@ export async function topPoliticiansByDiscourseRate(
     };
     const buckets = ((res.aggregations as { by_person?: { buckets: PersonBucket[] } } | undefined)
       ?.by_person?.buckets ?? []) as PersonBucket[];
+    const partyMap = await fetchPartyMap(buckets.map((b) => b.key));
     const rows = buckets.map((b) => {
       const sample = b.sample_name.hits.hits[0]?._source as SampleSrc | undefined;
       const name = sample?.speaker?.name_search ?? sample?.speaker?.name_raw ?? b.key;
+      // Speech-level `party_group_at_time` is null in the entire current corpus,
+      // so we look up the politician in `mo-persons` and try (a) `mandates.party`
+      // (future-proof, currently empty) and (b) regex over `aliases`. Falls back
+      // to null when no hint can be found.
+      const sampleParty = sample?.speaker?.party_group_at_time ?? null;
+      const party =
+        (sampleParty && sampleParty.trim().length > 0 ? sampleParty.trim() : null) ??
+        partyMap.get(b.key) ??
+        null;
       const rate = b.doc_count > 0 ? b.ge1.doc_count / b.doc_count : 0;
       const ci = wilson95(b.ge1.doc_count, b.doc_count);
       return {
         personId: b.key,
         name,
+        party,
         speechCount: b.doc_count,
         ge1Count: b.ge1.doc_count,
         ge1Rate: rate,
@@ -2648,7 +2674,7 @@ export async function topPoliticiansByDiscourseRate(
     return {
       result: {
         axis: opts.axis,
-        year: opts.year ?? new Date().getUTCFullYear(),
+        year: opts.year ?? null,
         rows,
       },
       esTookMs: res.took ?? null,
@@ -2712,7 +2738,7 @@ export async function discourseMarkerTreemap(
     const total = items.reduce((acc, i) => acc + i.count, 0);
     return {
       result: {
-        year: opts.year ?? new Date().getUTCFullYear(),
+        year: opts.year ?? null,
         items,
         total,
       },
@@ -2720,6 +2746,56 @@ export async function discourseMarkerTreemap(
       hitsTotal: items.length,
     };
   });
+}
+
+// Party-affiliation lookup for the rankings table. Tries `mandates.party` first
+// (future-proof — currently empty across every person record) and falls back
+// to a regex over the alias strings, which the upstream extractor often shapes
+// like "Nume Prenume, deputat AUR, Circumscripția electorală nr. 13 Cluj".
+// Returns a Map<personId, party> with only the IDs we could resolve.
+//
+// Lightweight in-process memo keyed on the sorted ID list. The /statistici
+// page calls this 3x (one per axis); same year / chamber tends to surface the
+// same politicians, so the cache hit rate is high and a 5-minute TTL is plenty
+// before the next ISR rebuild.
+const partyMapCache = new Map<string, { value: Map<string, string>; expires: number }>();
+const PARTY_MAP_TTL_MS = 5 * 60 * 1000;
+
+const ALIAS_PARTY_RE = /(?:^|,|\s)(?:deputat|senator)(?:ă|i)?\s+([A-Z][A-Z+-]{1,11})\b/;
+
+async function fetchPartyMap(personIds: string[]): Promise<Map<string, string>> {
+  const ids = Array.from(new Set(personIds.filter((id) => id && id.length > 0))).sort();
+  if (ids.length === 0) return new Map();
+  const cacheKey = ids.join("|");
+  const cached = partyMapCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.expires > now) return cached.value;
+  type PersonSrc = { aliases?: string[]; mandates?: Array<{ party?: string | null }> };
+  const res = await esClient().mget<PersonSrc>({
+    index: ES_INDEX.persons,
+    ids,
+    _source: ["mandates.party", "aliases"],
+  });
+  const out = new Map<string, string>();
+  for (const doc of res.docs ?? []) {
+    if (!("found" in doc) || !doc.found) continue;
+    const src = doc._source as PersonSrc | undefined;
+    if (!src) continue;
+    const fromMandates = src.mandates?.find((m) => m?.party && m.party.trim().length > 0)?.party;
+    if (fromMandates) {
+      out.set(doc._id as string, fromMandates.trim());
+      continue;
+    }
+    for (const alias of src.aliases ?? []) {
+      const m = alias.match(ALIAS_PARTY_RE);
+      if (m && m[1]) {
+        out.set(doc._id as string, m[1]);
+        break;
+      }
+    }
+  }
+  partyMapCache.set(cacheKey, { value: out, expires: now + PARTY_MAP_TTL_MS });
+  return out;
 }
 
 // Wilson 95% CI for a proportion. Closed form, no iteration. Documented as

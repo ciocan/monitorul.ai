@@ -9,10 +9,15 @@ import { cn } from "@/lib/utils";
 
 export interface MethodologyBlockProps {
   producerLabel?: string | null;
+  showRankingsNote?: boolean;
   className?: string;
 }
 
-export function MethodologyBlock({ producerLabel, className }: MethodologyBlockProps) {
+export function MethodologyBlock({
+  producerLabel,
+  showRankingsNote = false,
+  className,
+}: MethodologyBlockProps) {
   const codedBy = producerLabel ?? "google/gemini-3.1-flash-lite";
   return (
     <aside
@@ -40,6 +45,32 @@ export function MethodologyBlock({ producerLabel, className }: MethodologyBlockP
         reproducibilă, nu ca fapt stabilit. Marcherii, evidența și raționamentul fiecărei codări
         sunt vizibili pe pagina fiecărui discurs.
       </p>
+      {showRankingsNote && (
+        <>
+          <p className="mt-3 max-w-prose">
+            <span className="label-mono mr-2 text-ink-16">Cum sunt ordonați politicienii</span>
+            Clasamentul este sortat după <em>numărul absolut</em> de discursuri marcate (H ≥ 1
+            pentru Hawkins, V ≥ 1 pentru V-Party, DQI ≥ 2 pentru calitate deliberativă), nu după
+            rata observată. Concret: un politician cu 576 discursuri marcate din 582 (rată 99%) urcă
+            mai sus decât unul cu 538 marcate din 538 (rată 100%) — primul a livrat de mai multe ori
+            același tip de intervenție, chiar dacă procentul e ușor mai mic. Coloana procentuală
+            arată rata observată; ultima coloană este totalul discursurilor analizate. Politicienii
+            cu sub 5 discursuri analizate sunt excluși — nu sunt suficiente date pentru a-i compara
+            onest. Sortarea după rată sau după marginea inferioară Wilson va veni ca opțiune
+            separată într-o versiune ulterioară.
+          </p>
+          <p className="mt-3 max-w-prose">
+            <span className="label-mono mr-2 text-ink-16">Despre bara din clasamente</span>
+            Lângă fiecare politician apare o bandă orizontală — un{" "}
+            <em>interval de încredere de 95%</em> (Wilson). Linia verticală din mijloc este rata
+            observată; banda din jur arată plaja în care s-ar afla rata reală dacă am avea date
+            complete. Cu puține discursuri analizate banda este largă (rata poate fi întâmplare); cu
+            multe discursuri banda devine îngustă (rata e probabil aproape de cea reală). Așa, un
+            politician cu 3 din 3 discursuri marcate nu sare automat în top — așteptăm mai multe
+            date înainte să fie sigur.
+          </p>
+        </>
+      )}
       <p className="mt-3 max-w-prose">
         <Link
           href="/despre/discurs"

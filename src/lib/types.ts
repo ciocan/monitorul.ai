@@ -535,7 +535,8 @@ export interface DiscourseSystemMonth {
 }
 
 export interface DiscourseSystemTimeSeries {
-  year: number;
+  // null = aggregated across all coded years (no year filter applied).
+  year: number | null;
   monthly: DiscourseSystemMonth[];
 }
 
@@ -546,7 +547,7 @@ export interface DiscourseHvCrosstabCell {
 }
 
 export interface DiscourseHvCrosstab {
-  year: number;
+  year: number | null;
   total: number;
   cells: DiscourseHvCrosstabCell[];
   // The "illiberal cluster" cell count (H=2 + V≥1) — for the panel headline.
@@ -556,6 +557,10 @@ export interface DiscourseHvCrosstab {
 export interface DiscourseTopPolitician {
   personId: string;
   name: string;
+  // Party group sampled from the politician's most recent coded speech (e.g.
+  // "PSD", "AUR", "Neafiliat"). null when the upstream record is missing the
+  // field.
+  party: string | null;
   speechCount: number;
   ge1Count: number;
   ge1Rate: number;
@@ -567,7 +572,7 @@ export interface DiscourseTopPolitician {
 
 export interface DiscourseTopPoliticiansPayload {
   axis: "hawkins" | "vparty" | "dqi";
-  year: number;
+  year: number | null;
   rows: DiscourseTopPolitician[];
 }
 
@@ -578,7 +583,7 @@ export interface DiscourseMarkerTreemapItem {
 }
 
 export interface DiscourseMarkerTreemap {
-  year: number;
+  year: number | null;
   items: DiscourseMarkerTreemapItem[];
   total: number;
 }

@@ -133,10 +133,7 @@ export function SpeechDotScatter({
                 className={cn("transition-opacity", fillClass, "cursor-pointer hover:opacity-100")}
                 opacity={0.85}
               >
-                <title>
-                  {dot.sessionDate} · H={dot.hScore ?? "—"} V={dot.vScore ?? "—"} DQI=
-                  {dot.dqiLevel ?? "—"} · {baseCount} marcheri
-                </title>
+                <title>{`${dot.sessionDate} · H=${dot.hScore ?? "—"} V=${dot.vScore ?? "—"} DQI=${dot.dqiLevel ?? "—"} · ${baseCount} marcheri`}</title>
               </circle>
             </Link>
           );

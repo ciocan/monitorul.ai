@@ -34,10 +34,20 @@ interface PageProps {
   }>;
 }
 
-function parseYear(raw: string | undefined): number {
-  if (!raw) return new Date().getUTCFullYear();
+// Discourse coverage starts in 2020 (per /despre/discurs methodology). The chip
+// row enumerates every coded year + an "all years" option; the user-visible
+// default is "all" so the landing view shows the whole window at once.
+const DISCOURSE_YEAR_START = 2020;
+
+// Returns null when the user selected "all years" (no `?year=` param). A
+// specific year clamps to [DISCOURSE_YEAR_START, currentYear]; anything outside
+// that range falls back to all years rather than the previous current-year
+// fallback.
+function parseYear(raw: string | undefined): number | null {
+  if (!raw) return null;
   const n = Number.parseInt(raw, 10);
-  if (!Number.isInteger(n) || n < 2019 || n > 2100) return new Date().getUTCFullYear();
+  const currentYear = new Date().getUTCFullYear();
+  if (!Number.isInteger(n) || n < DISCOURSE_YEAR_START || n > currentYear) return null;
   return n;
 }
 
@@ -60,8 +70,11 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
   const year = parseYear(sp.year);
   const chamber = parseChamber(sp.chamber);
   const discourseParams = parseDiscourseParams(sp);
+  // year=null → no session_date filter applied in the lib (aggregates across
+  // every coded year). The chips emit `?year=YYYY` for specific years and the
+  // bare path `/statistici` for "all years".
   const filters = {
-    year,
+    year: year ?? undefined,
     chamber,
     voiceMode: discourseParams.voiceMode,
     confidenceMin: discourseParams.confidenceMin,
@@ -70,24 +83,27 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
   const [timeSeries, crosstab, hPolitics, vPolitics, dqiPolitics, treemap] = await Promise.all([
     discourseTimeSeries(filters),
     discourseHvCrosstab(filters),
-    topPoliticiansByDiscourseRate({ ...filters, axis: "hawkins", size: 10 }),
-    topPoliticiansByDiscourseRate({ ...filters, axis: "vparty", size: 10 }),
-    topPoliticiansByDiscourseRate({ ...filters, axis: "dqi", size: 10 }),
+    topPoliticiansByDiscourseRate({ ...filters, axis: "hawkins", size: 20 }),
+    topPoliticiansByDiscourseRate({ ...filters, axis: "vparty", size: 20 }),
+    topPoliticiansByDiscourseRate({ ...filters, axis: "dqi", size: 20 }),
     discourseMarkerTreemap(filters),
   ]);
 
   // Build a stable URLSearchParams clone for the chip toggles. We only carry
   // the params the user explicitly set; defaults stay implicit.
   const chipSearchParams = new URLSearchParams();
-  if (sp.year) chipSearchParams.set("year", String(year));
+  if (year !== null) chipSearchParams.set("year", String(year));
   if (chamber === "Camera Deputaților") chipSearchParams.set("chamber", "cd");
   if (chamber === "Senat") chipSearchParams.set("chamber", "senat");
   if (discourseParams.voiceMode === "all") chipSearchParams.set("voice", "all");
   if (discourseParams.confidenceMin === 0.7) chipSearchParams.set("conf", "07");
 
+  const yearLabel =
+    year === null ? `${DISCOURSE_YEAR_START}–${new Date().getUTCFullYear()}` : `${year}`;
+
   return (
     <article className="mx-auto w-full max-w-(--breakpoint-xl) px-6 py-10">
-      <Dateline parts={["Discurs analizat", `${year}`, chamber ?? "Ambele camere"]} />
+      <Dateline parts={["Discurs analizat", yearLabel, chamber ?? "Ambele camere"]} />
       <header className="mt-6 border-b border-border pb-6">
         <h1 className="font-display text-4xl leading-tight text-ink-16 sm:text-5xl">
           Statistici discurs analizat
@@ -108,7 +124,7 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
 
       <section className="mt-10 space-y-3" aria-labelledby="time-series">
         <h2 id="time-series" className="label-mono text-ink-30">
-          1 · Distribuția lunară H ≥ 1 / V ≥ 1, {year}
+          1 · Distribuția lunară H ≥ 1 / V ≥ 1, {yearLabel}
         </h2>
         <TimeSeriesLine data={timeSeries} />
       </section>
@@ -122,9 +138,9 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
 
       <section className="mt-10 space-y-3" aria-labelledby="rankings">
         <h2 id="rankings" className="label-mono text-ink-30">
-          3 · Top politicieni · {year}
+          3 · Top politicieni · {yearLabel}
         </h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="space-y-4">
           <MiniRankingTable data={hPolitics} />
           <MiniRankingTable data={vPolitics} />
           <MiniRankingTable data={dqiPolitics} />
@@ -138,9 +154,9 @@ export default async function StatisticiPage({ searchParams }: PageProps) {
         <MarkerTreemap data={treemap} />
       </section>
 
-      <MethodologyBlock className="mt-12" />
+      <MethodologyBlock className="mt-12" showRankingsNote />
 
-      <StatisticiJsonLd year={year} />
+      <StatisticiJsonLd label={yearLabel} />
     </article>
   );
 }
@@ -151,15 +167,15 @@ function FilterBar({
   chipSearchParams,
   discourseParams,
 }: {
-  year: number;
+  year: number | null;
   chamber: Chamber | undefined;
   chipSearchParams: URLSearchParams;
   discourseParams: { voiceMode: "first-person" | "all"; confidenceMin: number | null };
 }) {
   return (
     <div className="mt-6 flex flex-wrap items-center gap-3">
-      <YearChips selected={year} chamber={chamber} chipParams={chipSearchParams} />
-      <ChamberChips selected={chamber} chipParams={chipSearchParams} year={year} />
+      <YearChips selected={year} chipParams={chipSearchParams} />
+      <ChamberChips selected={chamber} chipParams={chipSearchParams} />
       <VoiceToggle
         basePath={STATISTICI_PATH}
         searchParams={chipSearchParams}
@@ -176,27 +192,29 @@ function FilterBar({
 
 function YearChips({
   selected,
-  chamber: _chamber,
   chipParams,
 }: {
-  selected: number;
-  chamber: Chamber | undefined;
+  selected: number | null;
   chipParams: URLSearchParams;
 }) {
   const currentYear = new Date().getUTCFullYear();
-  const years = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
+  // Newest first, ALL pinned to the front. Lower bound matches the documented
+  // 2020 discourse coverage start.
+  const years: Array<number | null> = [null];
+  for (let y = currentYear; y >= DISCOURSE_YEAR_START; y--) years.push(y);
   return (
     <span className="inline-flex flex-wrap items-baseline gap-px border border-paper-91 text-xs">
       {years.map((y) => {
         const sp = new URLSearchParams(chipParams);
-        if (y === currentYear) sp.delete("year");
+        if (y === null) sp.delete("year");
         else sp.set("year", String(y));
         const qs = sp.toString();
         const href = qs ? `${STATISTICI_PATH}?${qs}` : STATISTICI_PATH;
         const active = y === selected;
+        const label = y === null ? "Toți anii" : String(y);
         return (
           <a
-            key={y}
+            key={y ?? "all"}
             href={href}
             aria-current={active ? "true" : undefined}
             className={
@@ -205,7 +223,7 @@ function YearChips({
                 : "px-2 py-1 text-ink-30 hover:bg-paper-96 hover:text-ink-16"
             }
           >
-            {y}
+            {label}
           </a>
         );
       })}
@@ -216,11 +234,9 @@ function YearChips({
 function ChamberChips({
   selected,
   chipParams,
-  year,
 }: {
   selected: Chamber | undefined;
   chipParams: URLSearchParams;
-  year: number;
 }) {
   const options: Array<{ key: string; label: string; chamber: Chamber | null }> = [
     { key: "all", label: "Ambele", chamber: null },
@@ -233,7 +249,6 @@ function ChamberChips({
         const sp = new URLSearchParams(chipParams);
         if (o.key === "all") sp.delete("chamber");
         else sp.set("chamber", o.key);
-        if (year === new Date().getUTCFullYear()) sp.delete("year");
         const qs = sp.toString();
         const href = qs ? `${STATISTICI_PATH}?${qs}` : STATISTICI_PATH;
         const isActive =
@@ -258,13 +273,13 @@ function ChamberChips({
   );
 }
 
-function StatisticiJsonLd({ year }: { year: number }) {
+function StatisticiJsonLd({ label }: { label: string }) {
   const url = `${env.NEXT_PUBLIC_SITE_URL}${STATISTICI_PATH}`;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "WebPage",
     "@id": `${url}#page`,
-    name: `Statistici discurs analizat — ${year}`,
+    name: `Statistici discurs analizat — ${label}`,
     inLanguage: "ro",
     url,
     isPartOf: {

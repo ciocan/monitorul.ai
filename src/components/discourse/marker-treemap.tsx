@@ -51,57 +51,91 @@ export function MarkerTreemap({ data, className }: MarkerTreemapProps) {
   const packed = squarify(items, { x: 0, y: 0, w: VB_WIDTH, h: VB_HEIGHT });
   return (
     <div className={cn("border border-paper-91 bg-paper-99 px-3 py-3", className)}>
-      <svg
-        viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
-        preserveAspectRatio="none"
-        className="h-[280px] w-full"
+      {/*
+        Two cooperating layers:
+        1. SVG paints the colored cells (cheap, scales with the container).
+        2. An absolutely-positioned HTML overlay carries the click target,
+           the inline label, and a styled hover tooltip. HTML lets the tooltip
+           render in real CSS pixels (the SVG uses preserveAspectRatio="none"
+           so any text inside it would be subtly distorted) and lets us lift
+           the active cell above its neighbours via `hover:z-10`, so the
+           tooltip is never clipped by adjacent rectangles.
+      */}
+      <div
+        className="relative h-[280px] w-full"
         role="img"
-        aria-label={`Frecvența marcherilor în ${data.year}`}
+        aria-label={`Frecvența marcherilor în ${data.year === null ? "toți anii" : data.year}`}
       >
+        <svg
+          viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full"
+          aria-hidden="true"
+        >
+          {packed.map((p, i) => {
+            const tint = p.framework === "hawkins" ? "fill-alert-civic" : "fill-azure-3";
+            const opacity = 0.18 + 0.62 * (p.count / data.items[0].count);
+            return (
+              <rect
+                key={`rect-${p.framework}-${p.kind}-${i}`}
+                x={p.rect.x + 1}
+                y={p.rect.y + 1}
+                width={Math.max(0, p.rect.w - 2)}
+                height={Math.max(0, p.rect.h - 2)}
+                className={cn(tint, "stroke-paper-91")}
+                style={{ opacity }}
+              />
+            );
+          })}
+        </svg>
         {packed.map((p, i) => {
-          const tint = p.framework === "hawkins" ? "fill-alert-civic" : "fill-azure-3";
-          const opacity = 0.18 + 0.62 * (p.count / data.items[0].count);
-          const ratio = p.rect.w / p.rect.h;
+          const label = markerKindLabel(p.framework, p.kind);
+          const frameworkLabel = p.framework === "hawkins" ? "Hawkins" : "V-Party";
           const showLabel = p.rect.w > 80 && p.rect.h > 28;
+          // Tooltip flips to below the cell when there's no room above. The
+          // top-row cells (y=0) would otherwise render the bubble outside
+          // the chart container, where it gets clipped by the surrounding
+          // page.
+          const hasRoomAbove = p.rect.y > 28;
           return (
-            <g key={`${p.framework}-${p.kind}-${i}`}>
-              <Link href={`/cauta?q=${encodeURIComponent(markerKindLabel(p.framework, p.kind))}`}>
-                <rect
-                  x={p.rect.x + 1}
-                  y={p.rect.y + 1}
-                  width={Math.max(0, p.rect.w - 2)}
-                  height={Math.max(0, p.rect.h - 2)}
-                  className={cn(tint, "stroke-paper-91 cursor-pointer")}
-                  style={{ opacity }}
-                >
-                  <title>
-                    {p.framework} · {markerKindLabel(p.framework, p.kind)} · {p.count} discursuri
-                  </title>
-                </rect>
-              </Link>
+            <Link
+              key={`hot-${p.framework}-${p.kind}-${i}`}
+              href={`/cauta?q=${encodeURIComponent(label)}`}
+              className="group absolute block hover:z-10 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ink-16"
+              style={{
+                left: `${(p.rect.x / VB_WIDTH) * 100}%`,
+                top: `${(p.rect.y / VB_HEIGHT) * 100}%`,
+                width: `${(p.rect.w / VB_WIDTH) * 100}%`,
+                height: `${(p.rect.h / VB_HEIGHT) * 100}%`,
+              }}
+              aria-label={`${label} · ${frameworkLabel} · ${p.count} discursuri`}
+            >
               {showLabel ? (
-                <>
-                  <text
-                    x={p.rect.x + 8}
-                    y={p.rect.y + 18}
-                    className="fill-ink-16 font-display text-[14px]"
-                  >
-                    {markerKindLabel(p.framework, p.kind)}
-                  </text>
-                  <text
-                    x={p.rect.x + 8}
-                    y={p.rect.y + 32}
-                    className="fill-ink-45 font-mono text-[10px]"
-                  >
-                    {p.count} · {p.framework === "hawkins" ? "Hawkins" : "V-Party"} · ratio{" "}
-                    {ratio.toFixed(2)}
-                  </text>
-                </>
+                <span className="block px-2 pt-1.5 leading-tight">
+                  <span className="font-display block truncate text-[14px] text-ink-16">
+                    {label}
+                  </span>
+                  <span className="font-mono-meta block text-[10px] text-ink-45">
+                    {p.count} · {frameworkLabel}
+                  </span>
+                </span>
               ) : null}
-            </g>
+              <span
+                role="tooltip"
+                className={cn(
+                  "pointer-events-none invisible absolute left-1/2 z-20 max-w-[260px] -translate-x-1/2 border border-paper-91 bg-paper-99 px-2 py-1 text-[11px] leading-tight whitespace-normal text-ink-16 opacity-0 shadow-sm transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100",
+                  hasRoomAbove ? "bottom-[calc(100%+4px)]" : "top-[calc(100%+4px)]",
+                )}
+              >
+                <span className="font-display block text-[12px] text-ink-16">{label}</span>
+                <span className="font-mono-meta block text-[10px] text-ink-45">
+                  {frameworkLabel} · {p.count} discursuri
+                </span>
+              </span>
+            </Link>
           );
         })}
-      </svg>
+      </div>
       <div className="font-mono-meta mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-ink-45">
         <span className="inline-flex items-center gap-1">
           <span className={cn("inline-block h-2 w-2", FRAMEWORK_BG_TINT.hawkins)} />

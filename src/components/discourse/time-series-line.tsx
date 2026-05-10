@@ -86,14 +86,10 @@ export function TimeSeriesLine({ data, className }: TimeSeriesLineProps) {
         {rates.map((r, i) => (
           <g key={`pt-${i}`}>
             <circle cx={xFor(i)} cy={yFor(r.hRate)} r={2.4} className="fill-alert-civic">
-              <title>
-                {r.month}: H≥1 {(r.hRate * 100).toFixed(1)}% din {r.total}
-              </title>
+              <title>{`${r.month}: H≥1 ${(r.hRate * 100).toFixed(1)}% din ${r.total}`}</title>
             </circle>
             <circle cx={xFor(i)} cy={yFor(r.vRate)} r={2.4} className="fill-azure-3">
-              <title>
-                {r.month}: V≥1 {(r.vRate * 100).toFixed(1)}% din {r.total}
-              </title>
+              <title>{`${r.month}: V≥1 ${(r.vRate * 100).toFixed(1)}% din ${r.total}`}</title>
             </circle>
           </g>
         ))}
@@ -121,7 +117,7 @@ export function TimeSeriesLine({ data, className }: TimeSeriesLineProps) {
           <span className="bg-azure-3 inline-block h-px w-4" />V ≥ 1 (V-Party)
         </span>
         <span>·</span>
-        <span>{data.year}</span>
+        <span>{data.year === null ? "Toți anii" : data.year}</span>
       </div>
     </div>
   );
