@@ -260,7 +260,7 @@ Flat by default. The system uses tonal layering and rule lines as its primary de
 - **Site nav:** a single 1px-rule-bottom horizontal bar at the top of every page. No drop shadow. Logo at left in `display` Source Serif at 18px / weight 400; menu items at right in `label` mono uppercase tracked.
 - **Active state:** the active item gains a 2px `Civic Azure` underline (`box-shadow: inset 0 -2px 0 ...`), not a fill.
 - **Mobile:** the nav collapses to a single `Meniu` mono label that opens a full-screen panel with all items as a vertical list. No hamburger icon.
-- **Breadcrumb:** mono label, separator is ` · ` (middle-dot with surrounding spaces), never a `>` or `/`.
+- **Breadcrumb:** mono label, separator is `·` (middle-dot with surrounding spaces), never a `>` or `/`.
 
 ### Dateline (signature component)
 

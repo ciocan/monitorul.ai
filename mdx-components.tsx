@@ -33,17 +33,17 @@ const components: MDXComponents = {
   ),
   li: ({ children }) => <li className="leading-6">{children}</li>,
   code: ({ children }) => (
-    <code className="bg-surface-muted px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="bg-paper-96 px-1 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   ),
   pre: ({ children }) => (
-    <pre className="my-3 overflow-x-auto border border-border bg-surface-muted p-3 font-mono text-[12px] leading-5">
+    <pre className="my-3 overflow-x-auto border border-border bg-paper-96 p-3 font-mono text-[12px] leading-5">
       {children}
     </pre>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="my-3 border border-border bg-accent-weak px-4 py-2 text-sm text-foreground">
+    <blockquote className="my-3 border border-border bg-paper-96 px-4 py-2 text-sm text-foreground">
       {children}
     </blockquote>
   ),
@@ -53,9 +53,9 @@ const components: MDXComponents = {
       <table className="w-full text-left text-[13px]">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-surface-muted">{children}</thead>,
+  thead: ({ children }) => <thead className="bg-paper-96">{children}</thead>,
   th: ({ children }) => (
-    <th className="border-b border-border px-3 py-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.18em] text-foreground-muted">
+    <th className="border-b border-border px-3 py-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.18em] text-ink-45">
       {children}
     </th>
   ),

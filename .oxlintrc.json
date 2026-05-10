@@ -11,7 +11,13 @@
   },
   "rules": {
     "react/react-in-jsx-scope": "off",
-    "react/no-array-index-key": "off"
+    "react/no-array-index-key": "off",
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": ["_source", "_index", "_id", "_score", "_meta", "_shards", "_msearch"]
+      }
+    ]
   },
   "env": {
     "browser": true,

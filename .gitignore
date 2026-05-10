@@ -31,7 +31,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+.env
+.env.local
 
 # vercel
 .vercel
@@ -39,3 +40,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# impeccable live mode (keep config.json; ignore runtime/session state)
+.impeccable/live/server.json
+.impeccable/live/sessions/
+.impeccable/live/annotations/
+
+# smoke-test artifacts from playwright/chrome-devtools MCP sessions
+.playwright-mcp/
+.chrome-devtools-mcp/
+
+_session-*

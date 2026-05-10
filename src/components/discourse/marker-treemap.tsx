@@ -1,0 +1,236 @@
+import Link from "next/link";
+
+import { cn } from "@/lib/utils";
+
+import { markerKindLabel } from "@/lib/discourse-copy";
+import type { DiscourseMarkerTreemap } from "@/lib/types";
+
+import { FRAMEWORK_BG_TINT } from "./framework-badge";
+
+// Squarified treemap for marker-kind frequency. Hand-rolled in ~80 LOC. Uses
+// the standard squarified algorithm (Bruls et al. 1999): walk items in
+// descending order, pack each "row" along the shorter side of the remaining
+// rectangle, flip the orientation when the next item degrades the worst aspect
+// ratio. Plenty of approximations (no recursive sub-treemaps, no animation),
+// matching the page's editorial-restraint register.
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface PackedItem {
+  framework: "hawkins" | "vparty";
+  kind: string;
+  count: number;
+  rect: Rect;
+}
+
+const VB_WIDTH = 1200;
+const VB_HEIGHT = 320;
+
+export interface MarkerTreemapProps {
+  data: DiscourseMarkerTreemap;
+  className?: string;
+}
+
+export function MarkerTreemap({ data, className }: MarkerTreemapProps) {
+  if (data.items.length === 0) {
+    return (
+      <div className={cn("border border-paper-91 bg-paper-99 px-3 py-12 text-center", className)}>
+        <p className="text-sm text-ink-45">Nu există marcheri pentru acest filtru.</p>
+      </div>
+    );
+  }
+  const items = data.items.filter(
+    (i): i is { framework: "hawkins" | "vparty"; kind: string; count: number } =>
+      i.framework === "hawkins" || i.framework === "vparty",
+  );
+  const packed = squarify(items, { x: 0, y: 0, w: VB_WIDTH, h: VB_HEIGHT });
+  return (
+    <div className={cn("border border-paper-91 bg-paper-99 px-3 py-3", className)}>
+      {/*
+        Two cooperating layers:
+        1. SVG paints the colored cells (cheap, scales with the container).
+        2. An absolutely-positioned HTML overlay carries the click target,
+           the inline label, and a styled hover tooltip. HTML lets the tooltip
+           render in real CSS pixels (the SVG uses preserveAspectRatio="none"
+           so any text inside it would be subtly distorted) and lets us lift
+           the active cell above its neighbours via `hover:z-10`, so the
+           tooltip is never clipped by adjacent rectangles.
+      */}
+      <div
+        className="relative h-[280px] w-full"
+        role="img"
+        aria-label={`Frecvența marcherilor în ${data.year === null ? "toți anii" : data.year}`}
+      >
+        <svg
+          viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full"
+          aria-hidden="true"
+        >
+          {packed.map((p, i) => {
+            const tint = p.framework === "hawkins" ? "fill-alert-civic" : "fill-azure-3";
+            const opacity = 0.18 + 0.62 * (p.count / data.items[0].count);
+            return (
+              <rect
+                key={`rect-${p.framework}-${p.kind}-${i}`}
+                x={p.rect.x + 1}
+                y={p.rect.y + 1}
+                width={Math.max(0, p.rect.w - 2)}
+                height={Math.max(0, p.rect.h - 2)}
+                className={cn(tint, "stroke-paper-91")}
+                style={{ opacity }}
+              />
+            );
+          })}
+        </svg>
+        {packed.map((p, i) => {
+          const label = markerKindLabel(p.framework, p.kind);
+          const frameworkLabel = p.framework === "hawkins" ? "Hawkins" : "V-Party";
+          const showLabel = p.rect.w > 80 && p.rect.h > 28;
+          // Tooltip flips to below the cell when there's no room above. The
+          // top-row cells (y=0) would otherwise render the bubble outside
+          // the chart container, where it gets clipped by the surrounding
+          // page.
+          const hasRoomAbove = p.rect.y > 28;
+          return (
+            <Link
+              key={`hot-${p.framework}-${p.kind}-${i}`}
+              href={`/cauta?q=${encodeURIComponent(label)}`}
+              className="group absolute block hover:z-10 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ink-16"
+              style={{
+                left: `${(p.rect.x / VB_WIDTH) * 100}%`,
+                top: `${(p.rect.y / VB_HEIGHT) * 100}%`,
+                width: `${(p.rect.w / VB_WIDTH) * 100}%`,
+                height: `${(p.rect.h / VB_HEIGHT) * 100}%`,
+              }}
+              aria-label={`${label} · ${frameworkLabel} · ${p.count} discursuri`}
+            >
+              {showLabel ? (
+                <span className="block px-2 pt-1.5 leading-tight">
+                  <span className="font-display block truncate text-[14px] text-ink-16">
+                    {label}
+                  </span>
+                  <span className="font-mono-meta block text-[10px] text-ink-45">
+                    {p.count} · {frameworkLabel}
+                  </span>
+                </span>
+              ) : null}
+              <span
+                role="tooltip"
+                className={cn(
+                  "pointer-events-none invisible absolute left-1/2 z-20 max-w-[260px] -translate-x-1/2 border border-paper-91 bg-paper-99 px-2 py-1 text-[11px] leading-tight whitespace-normal text-ink-16 opacity-0 shadow-sm transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100",
+                  hasRoomAbove ? "bottom-[calc(100%+4px)]" : "top-[calc(100%+4px)]",
+                )}
+              >
+                <span className="font-display block text-[12px] text-ink-16">{label}</span>
+                <span className="font-mono-meta block text-[10px] text-ink-45">
+                  {frameworkLabel} · {p.count} discursuri
+                </span>
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+      <div className="font-mono-meta mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-ink-45">
+        <span className="inline-flex items-center gap-1">
+          <span className={cn("inline-block h-2 w-2", FRAMEWORK_BG_TINT.hawkins)} />
+          Hawkins (populism)
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className={cn("inline-block h-2 w-2", FRAMEWORK_BG_TINT.vparty)} />
+          V-Party (anti-pluralism)
+        </span>
+        <span>· {data.items.length} marcheri în top · clic = caută</span>
+      </div>
+    </div>
+  );
+}
+
+// Squarified treemap layout. Items must be sorted descending by count.
+function squarify(
+  items: { framework: "hawkins" | "vparty"; kind: string; count: number }[],
+  bounds: Rect,
+): PackedItem[] {
+  const sorted = [...items].sort((a, b) => b.count - a.count);
+  const totalCount = sorted.reduce((acc, i) => acc + i.count, 0);
+  const totalArea = bounds.w * bounds.h;
+  const scaled = sorted.map((it) => ({ ...it, area: (it.count / totalCount) * totalArea }));
+  const out: PackedItem[] = [];
+  layout(scaled, [], bounds, out);
+  return out;
+}
+
+function worstRatio(row: { area: number }[], side: number): number {
+  if (row.length === 0) return Number.POSITIVE_INFINITY;
+  const sum = row.reduce((acc, r) => acc + r.area, 0);
+  const sumSq = sum * sum;
+  const sideSq = side * side;
+  let max = 0;
+  for (const r of row) {
+    const ratio = Math.max((sideSq * r.area) / sumSq, sumSq / (sideSq * r.area));
+    if (ratio > max) max = ratio;
+  }
+  return max;
+}
+
+function layout(
+  remaining: { framework: "hawkins" | "vparty"; kind: string; count: number; area: number }[],
+  row: { framework: "hawkins" | "vparty"; kind: string; count: number; area: number }[],
+  rect: Rect,
+  out: PackedItem[],
+): void {
+  if (remaining.length === 0) {
+    layoutRow(row, rect, out);
+    return;
+  }
+  const [next, ...rest] = remaining;
+  const side = Math.min(rect.w, rect.h);
+  if (worstRatio([...row, next], side) <= worstRatio(row, side) || row.length === 0) {
+    layout(rest, [...row, next], rect, out);
+  } else {
+    const newRect = layoutRow(row, rect, out);
+    layout(remaining, [], newRect, out);
+  }
+}
+
+function layoutRow(
+  row: { framework: "hawkins" | "vparty"; kind: string; count: number; area: number }[],
+  rect: Rect,
+  out: PackedItem[],
+): Rect {
+  if (row.length === 0) return rect;
+  const sum = row.reduce((acc, r) => acc + r.area, 0);
+  if (rect.w <= rect.h) {
+    const rowH = sum / rect.w;
+    let cx = rect.x;
+    for (const r of row) {
+      const itemW = (r.area / sum) * rect.w;
+      out.push({
+        framework: r.framework,
+        kind: r.kind,
+        count: r.count,
+        rect: { x: cx, y: rect.y, w: itemW, h: rowH },
+      });
+      cx += itemW;
+    }
+    return { x: rect.x, y: rect.y + rowH, w: rect.w, h: Math.max(0, rect.h - rowH) };
+  }
+  const rowW = sum / rect.h;
+  let cy = rect.y;
+  for (const r of row) {
+    const itemH = (r.area / sum) * rect.h;
+    out.push({
+      framework: r.framework,
+      kind: r.kind,
+      count: r.count,
+      rect: { x: rect.x, y: cy, w: rowW, h: itemH },
+    });
+    cy += itemH;
+  }
+  return { x: rect.x + rowW, y: rect.y, w: Math.max(0, rect.w - rowW), h: rect.h };
+}

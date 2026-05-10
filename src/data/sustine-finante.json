@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_comment": "Quarterly transparency report for /sustine. Edits = git commits = audit trail. Two cost tracks: `infra_monthly_eur` is the recurring monthly infrastructure bill (Vercel, ES, R2, embedări). `coverage.*` carries the per-tier project budgets — these are one-shot per backfill, not monthly recurring. Totals are computed in the renderer; never store derived values here. Costs in EUR. Coverage figures from monitorul/data/analyze-runs/.",
+  "current": {
+    "quarter": "2026-Q2",
+    "updated": "2026-05-10",
+    "estimated": true,
+    "infra_monthly_eur": {
+      "hosting": 20,
+      "elasticsearch": 100,
+      "r2_storage": 5,
+      "embeddings": 1
+    },
+    "income_eur": {
+      "recurring_monthly": 0,
+      "one_off_quarter": 0
+    },
+    "coverage": {
+      "tier1": {
+        "model": "gemini-3.1-flash-lite",
+        "cost_per_speech_usd": 0.004,
+        "status": "in_progress",
+        "spent_usd": 500,
+        "spent_period": "2020-2026 (codificare curentă, finalizată)",
+        "pending_period": "2000-2019 (backfill retroactiv, în lucru)",
+        "pending_cost_estimate_usd": 1800,
+        "estimate_completion": "Q3 2026"
+      },
+      "tier2": {
+        "model": "opus-4-7",
+        "cost_per_speech_usd": 1.36,
+        "status": "awaiting_funding",
+        "sample_pct": 5,
+        "target_speeches_estimate": 25000,
+        "target_funding_eur": 31000,
+        "funded_eur": 0
+      },
+      "tier3": {
+        "model": "opus-4-7",
+        "status": "available_when_tier2_funded",
+        "speeches_delivered": 0,
+        "description": "Opus pe cerere pentru discursuri marcate de jurnaliști sau cazuri-limită Hawkins=2 / V-pluralism=high detectate de Tier 1."
+      }
+    },
+    "refusals": {
+      "count": 0,
+      "notes": ""
+    }
+  },
+  "archive": []
+}
