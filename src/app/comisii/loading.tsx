@@ -23,15 +23,12 @@ export default function Loading() {
       <section className="mt-10" aria-hidden="true">
         <div className="mb-4 h-3 w-12 animate-pulse bg-paper-91/70" />
         <div className="border-y border-border py-4">
-          <div className="flex items-end gap-[3px]" style={{ minHeight: "78px" }}>
+          <div className="flex w-full items-end gap-[3px]" style={{ minHeight: "78px" }}>
             {Array.from({ length: 24 }, (_, i) => (
-              <div key={i} className="flex flex-col items-center">
+              <div key={i} className="flex min-w-0 flex-1 flex-col items-center">
                 <div
-                  className="animate-pulse bg-paper-91"
-                  style={{
-                    width: "12px",
-                    height: `${10 + ((i * 19) % 48)}px`,
-                  }}
+                  className="w-full animate-pulse bg-paper-91"
+                  style={{ height: `${10 + ((i * 19) % 48)}px` }}
                 />
                 <div className="mt-2 h-2 w-3 animate-pulse bg-paper-91/70" />
               </div>

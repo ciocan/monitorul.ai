@@ -137,6 +137,7 @@ export default async function CommitteeProfilePage({ params, searchParams }: Pag
             }
             navAriaLabel="Selectează anul ședințelor"
             countNoun={{ one: "ședință", few: "ședințe", many: "de ședințe" }}
+            stretch
           />
         </section>
       ) : null}

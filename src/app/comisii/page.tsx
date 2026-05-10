@@ -98,6 +98,7 @@ export default async function CommitteesIndexPage({ searchParams }: PageProps) {
             hrefForYear={(year) => `/comisii?year=${year}`}
             navAriaLabel="Selectează anul ședințelor"
             countNoun={{ one: "ședință", few: "ședințe", many: "de ședințe" }}
+            stretch
           />
         </section>
       ) : null}
