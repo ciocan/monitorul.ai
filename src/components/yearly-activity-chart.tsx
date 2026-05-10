@@ -15,6 +15,9 @@ export interface YearlyActivityChartProps {
   selectedYear: number;
   slug: string;
   className?: string;
+  // When true, bars stretch to fill the container width instead of using the
+  // fixed 12px bar. Mirrors the `stretch` prop on `YearSparkbar`.
+  stretch?: boolean;
 }
 
 const BAR_WIDTH = 12;
@@ -43,6 +46,7 @@ export function YearlyActivityChart({
   selectedYear,
   slug,
   className,
+  stretch = false,
 }: YearlyActivityChartProps) {
   const series = fillYearGaps(yearlyCounts, selectedYear);
   const max = series.reduce((m, c) => Math.max(m, c.count), 0);
@@ -52,9 +56,9 @@ export function YearlyActivityChart({
       aria-label="Selectează anul activității"
       className={cn("border-y border-border py-4", className)}
     >
-      <div className="overflow-x-auto pb-1">
+      <div className={stretch ? "pb-1" : "overflow-x-auto pb-1"}>
         <ol
-          className="flex items-end"
+          className={cn("flex items-end", stretch && "w-full")}
           style={{ gap: `${BAR_GAP}px`, minHeight: `${BAR_MAX_HEIGHT + 18}px` }}
         >
           {series.map((entry) => {
@@ -70,7 +74,10 @@ export function YearlyActivityChart({
                 : `${entry.year}: ${pluralRo(entry.count, "discurs", "discursuri", "de discursuri")}`;
             const href = `/politicieni/${slug}?year=${entry.year}`;
             return (
-              <li key={entry.year} className="flex flex-col items-center">
+              <li
+                key={entry.year}
+                className={cn("flex flex-col items-center", stretch && "min-w-0 flex-1")}
+              >
                 <Link
                   href={href}
                   scroll={false}
@@ -78,7 +85,10 @@ export function YearlyActivityChart({
                   aria-current={isSelected ? "true" : undefined}
                   aria-label={`Vezi activitatea din anul ${entry.year}: ${formatCount(entry.count)} ${entry.count === 1 ? "discurs" : "discursuri"}`}
                   title={label}
-                  className="group flex flex-col items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className={cn(
+                    "group flex flex-col items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                    stretch && "w-full",
+                  )}
                 >
                   <span
                     aria-hidden="true"
@@ -94,7 +104,10 @@ export function YearlyActivityChart({
                           ? "bg-azure-4"
                           : "bg-azure-2 group-hover:bg-azure-3",
                     )}
-                    style={{ width: `${BAR_WIDTH}px`, height: `${barHeight}px` }}
+                    style={{
+                      width: stretch ? "100%" : `${BAR_WIDTH}px`,
+                      height: `${barHeight}px`,
+                    }}
                   />
                   <span
                     aria-hidden="true"
@@ -103,7 +116,7 @@ export function YearlyActivityChart({
                       isSelected ? "text-ink-16" : "text-ink-45 group-hover:text-ink-30",
                     )}
                     style={{
-                      width: `${BAR_WIDTH}px`,
+                      width: stretch ? "100%" : `${BAR_WIDTH}px`,
                       textAlign: "center",
                       letterSpacing: "0.04em",
                     }}

@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
+import { AccountChip } from "@/components/account-chip";
+import { AccountMobileSection } from "@/components/account-mobile-section";
 import { SiteNavDesktop, SiteNavMobile } from "@/components/site-nav";
 import { SiteSearch } from "@/components/site-search";
 import { SiteSearchNav } from "@/components/site-search-nav";
@@ -30,7 +33,20 @@ export function SiteHeader() {
           <SiteSearch />
         </SiteSearchNav>
         <ThemeToggle />
-        <SiteNavMobile />
+        {/* `AccountChip` reads the session via `auth.api.getSession`; wrap
+            in Suspense so a slow Neon round-trip doesn't stall the rest of
+            the masthead. The fallback is invisible — the chip just shows
+            up a heartbeat after the rest of the header. */}
+        <Suspense fallback={null}>
+          <AccountChip className="hidden md:inline-flex" />
+        </Suspense>
+        <SiteNavMobile
+          accountSlot={
+            <Suspense fallback={null}>
+              <AccountMobileSection />
+            </Suspense>
+          }
+        />
       </div>
     </header>
   );

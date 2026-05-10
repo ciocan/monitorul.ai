@@ -42,6 +42,7 @@ const TOC_PART_ONE: TocItem[] = [
   { id: "acoperire", label: "Ce găsești și ce nu găsești" },
   { id: "identitate", label: "De ce link-urile rămân stabile" },
   { id: "cautare", label: "Cum funcționează căutarea" },
+  { id: "confidentialitate", label: "Ce stocăm despre tine" },
   { id: "corectii", label: "Cum semnalezi o eroare" },
   { id: "sursa", label: "Surse și licență" },
 ];
@@ -50,6 +51,7 @@ const TOC_PART_TWO: TocItem[] = [
   { id: "pipeline", label: "Pipeline-ul în opt pași" },
   { id: "identitate-tehnic", label: "Identitatea înregistrărilor" },
   { id: "cautare-tehnic", label: "Hibrid BM25 + kNN" },
+  { id: "confidentialitate-tehnic", label: "Date personale și log" },
 ];
 
 export default function DesprePage() {
@@ -241,6 +243,54 @@ export default function DesprePage() {
           Detaliile tehnice (BM25, kNN, fuziune RRF, comportamente de degradare) sunt la{" "}
           <a href="#cautare-tehnic" className="underline underline-offset-4 hover:text-ink-16">
             Hibrid BM25 + kNN
+          </a>
+          .
+        </p>
+      </Section>
+
+      <Section id="confidentialitate" title="Ce stocăm despre tine">
+        <p>
+          Site-ul este public și se poate citi fără cont. Atunci când îl citești în browser, NU
+          stocăm cine ești — nicio identitate, nicio adresă de e-mail. Singurul moment în care
+          monitorul.ai îți cere o identitate este conectarea unui asistent AI la serverul MCP, prin
+          autentificare cu Google.
+        </p>
+        <p>
+          Dacă ai un cont (autentificat cu Google), stocăm doar minimul necesar pentru ca
+          autentificarea să funcționeze și pentru ca limitarea de rată să fie corectă:
+        </p>
+        <ul className="mt-5 list-none space-y-3 border-l border-border pl-5">
+          <li className="text-base leading-relaxed text-ink-30">
+            <span className="label-mono mr-3 text-ink-16">Identitate</span>
+            adresa de e-mail și ID-ul contului Google — necesare pentru ca asistentul tău să te
+            recunoască la următoarea conectare.
+          </li>
+          <li className="text-base leading-relaxed text-ink-30">
+            <span className="label-mono mr-3 text-ink-16">Asistenți conectați</span>
+            lista clienților OAuth pe care i-ai autorizat (Claude Desktop, Cursor etc.), cu numele
+            lor și momentul fiecărei conectări — vizibilă în pagina ta de cont la <code>/cont</code>
+            , unde poți și revoca oricare dintre ei.
+          </li>
+          <li className="text-base leading-relaxed text-ink-30">
+            <span className="label-mono mr-3 text-ink-16">Apeluri MCP</span>
+            atribuim ID-ul tău intern fiecărei cereri spre serverul MCP — nu textul interogării, nu
+            răspunsul, doar &quot;contul X a făcut tool-call-ul Y la ora Z&quot;. Folosim asta ca să
+            detectăm și să blocăm abuzul (de exemplu, un singur cont care încearcă să extragă tot
+            corpusul cu cereri scurte).
+          </li>
+        </ul>
+        <p className="mt-5">
+          Nu vindem date și nu folosim un serviciu de analytics terț. Ștergerea contului și a
+          tuturor datelor asociate se face la cerere prin canalul de la{" "}
+          <a href="#corectii" className="underline underline-offset-4 hover:text-ink-16">
+            #corectii
+          </a>
+          . Detalii tehnice (ce coloane stocăm, ce serviciu de bază de date și unde) sunt la{" "}
+          <a
+            href="#confidentialitate-tehnic"
+            className="underline underline-offset-4 hover:text-ink-16"
+          >
+            Date personale și log
           </a>
           .
         </p>
@@ -500,6 +550,82 @@ export default function DesprePage() {
           potriviri plauzibile dar irelevante). Modul implicit pentru navigarea unui politician sau
           a unui document este filtrul direct după identitatea înregistrării, nu căutarea — paginile
           structurate sunt mai precise pentru aceste cazuri.
+        </p>
+      </Section>
+
+      <Section id="confidentialitate-tehnic" title="Date personale și log">
+        <p>
+          Autentificarea pe serverul MCP este implementată prin Better Auth (
+          <code>better-auth</code>) cu plugin-ul <code>mcp</code>: OAuth 2.0 + PKCE + dynamic client
+          registration (DCR), conform RFC-urilor 7591 / 9728 și specificației MCP. Single social
+          provider activ — Google. Token-urile (access ~24 ore, refresh ~30 zile) sunt semnate cu
+          secretul HS256 din variabila de mediu <code>BETTER_AUTH_SECRET</code>.
+        </p>
+        <p>
+          Backing store: Neon Postgres (proiect <code>monitorul-ai</code>) cu schema:
+        </p>
+        <ul className="mt-2 list-none space-y-2 border-l border-border pl-5">
+          <li className="font-mono-meta text-sm text-ink-30">
+            <strong className="text-ink-16">user</strong> — id, name, email, emailVerified, image
+          </li>
+          <li className="font-mono-meta text-sm text-ink-30">
+            <strong className="text-ink-16">session</strong> — id, userId, expiresAt, token,
+            ipAddress, userAgent
+          </li>
+          <li className="font-mono-meta text-sm text-ink-30">
+            <strong className="text-ink-16">account</strong> — providerId, accountId, accessToken,
+            refreshToken, idToken
+          </li>
+          <li className="font-mono-meta text-sm text-ink-30">
+            <strong className="text-ink-16">oauth_application</strong> — clientId, name,
+            redirectUrls, metadata, userId (proprietar)
+          </li>
+          <li className="font-mono-meta text-sm text-ink-30">
+            <strong className="text-ink-16">oauth_access_token</strong> — accessToken, refreshToken,
+            scopes, clientId, userId, expirări
+          </li>
+          <li className="font-mono-meta text-sm text-ink-30">
+            <strong className="text-ink-16">oauth_consent</strong> — clientId, userId, scopes,
+            consentGiven
+          </li>
+        </ul>
+        <p className="mt-5">
+          Atribuția per cerere se face prin câmpul{" "}
+          <code className="font-mono-meta text-ink-16">user_id</code> adăugat în fiecare rând al
+          indexului <code className="font-mono-meta text-ink-16">monitorul_query_log</code>. Câmpul
+          rămâne <code>null</code> pentru traficul anonim al site-ului (RSC pages, autocomplete) și
+          conține ID-ul intern Better Auth pentru toate apelurile prin server-ul MCP. Stocăm
+          momentul, tool-call-ul și argumentele — nu rezultatele și nu textul documentelor extrase.
+          Schema completă este în repo:{" "}
+          <a
+            href="https://github.com/ciocan/monitorul.ai/blob/main/docs/architecture.md"
+            className="underline underline-offset-4 hover:text-ink-16"
+            rel="noreferrer"
+            target="_blank"
+          >
+            docs/architecture.md
+          </a>
+          .
+        </p>
+        <p>
+          Bază legală pentru prelucrare: interes legitim (limitarea de rată și diagnoza abuzului
+          serverului MCP) plus consimțământ explicit la momentul autentificării (ecranul de
+          consimțământ <code>/cont/consimt</code> arată numele și URL-ul aplicației înainte de
+          acordare). Drepturile conform GDPR / Regulamentului UE 2016/679 — acces, rectificare,
+          ștergere, portabilitate, restricționare, opoziție — se exercită prin canalul{" "}
+          <a href="#corectii" className="underline underline-offset-4 hover:text-ink-16">
+            #corectii
+          </a>
+          . Pentru ștergerea contului: deschide un issue în repo cu adresa de e-mail asociată
+          contului; ștergem rândul din <code>user</code> (cascadă spre <code>session</code>,{" "}
+          <code>account</code>, <code>oauth_*</code>) și rescriem
+          <code>user_id</code> la <code>null</code> în log-urile reținute istoric.
+        </p>
+        <p>
+          Fără cookie-uri terțe, fără pixel de tracking, fără serviciu de analytics third-party.
+          Singurele cookie-uri sunt cele scrise de Better Auth pentru sesiunea de browser (prefix{" "}
+          <code className="font-mono-meta text-ink-16">mo.</code>) și nu sunt vizibile de niciun alt
+          domeniu.
         </p>
       </Section>
     </article>

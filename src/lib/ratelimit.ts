@@ -5,19 +5,30 @@ import { Redis } from "@upstash/redis";
 
 import { env } from "@/env";
 
-// Per-IP sliding-window rate limiters for the public MCP route. Two tiers:
+// Sliding-window rate limiters for the auth-gated MCP route. Defense in
+// depth across two axes:
 //
-//   - `general` — every tool call. Loose enough for legitimate multi-step
-//     LLM exchanges (a bursty 30/min chain is normal).
+//   - **Per-IP** (`generalLimiter`, `heavyLimiter`) — protects against a
+//     single network origin (botnet node, scraper, single token leaked
+//     across many clients) overwhelming the route, regardless of which
+//     user account is in play.
 //
-//   - `heavy` — RRF / kNN-only `search_speeches`. Each call hits the embed
-//     service and runs two ES queries; cap individual abusers at 6/min so a
-//     single client can't melt the embed pool.
+//   - **Per-user** (`userLimiter`, `userHeavyLimiter`) — protects against
+//     a single account spreading abuse across rotating IPs (cloud
+//     functions, residential proxies). Bound to the Better Auth `userId`
+//     supplied by `withMcpAuth`.
 //
-// Both keys collapse anonymous IPs (no headers) onto a single shared bucket
-// so the limiter can't be bypassed by stripping `x-forwarded-for`. When the
-// Upstash env vars aren't set, both limiters short-circuit to "always allow"
-// — convenient for local dev. Production deploys MUST set both vars.
+// Each axis has two tiers:
+//
+//   - `general` (30/min) — every tool call.
+//   - `heavy`   (6/min) — RRF / kNN-only `search_speeches`. Each call hits
+//     the embed service and runs two ES queries; tighter per-IP and
+//     per-user caps stop a single actor from melting the embed pool.
+//
+// Both axes must clear for a request to proceed; either 429 short-circuits.
+// When the Upstash env vars aren't set, all limiters short-circuit to
+// "always allow" — convenient for local dev. Production deploys MUST set
+// both vars.
 
 interface RateLimitDecision {
   success: boolean;
@@ -42,6 +53,8 @@ const ALWAYS_ALLOW: RateLimiter = {
 let cachedRedis: Redis | null = null;
 let cachedGeneral: RateLimiter | null = null;
 let cachedHeavy: RateLimiter | null = null;
+let cachedUserGeneral: RateLimiter | null = null;
+let cachedUserHeavy: RateLimiter | null = null;
 
 function redis(): Redis | null {
   if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) return null;
@@ -85,6 +98,38 @@ export function heavyLimiter(): RateLimiter {
   return cachedHeavy;
 }
 
+export function userLimiter(): RateLimiter {
+  if (cachedUserGeneral) return cachedUserGeneral;
+  const r = redis();
+  if (!r) {
+    cachedUserGeneral = ALWAYS_ALLOW;
+    return cachedUserGeneral;
+  }
+  cachedUserGeneral = new Ratelimit({
+    redis: r,
+    limiter: Ratelimit.slidingWindow(30, "1 m"),
+    prefix: "mcp:user-general",
+    analytics: false,
+  });
+  return cachedUserGeneral;
+}
+
+export function userHeavyLimiter(): RateLimiter {
+  if (cachedUserHeavy) return cachedUserHeavy;
+  const r = redis();
+  if (!r) {
+    cachedUserHeavy = ALWAYS_ALLOW;
+    return cachedUserHeavy;
+  }
+  cachedUserHeavy = new Ratelimit({
+    redis: r,
+    limiter: Ratelimit.slidingWindow(6, "1 m"),
+    prefix: "mcp:user-heavy",
+    analytics: false,
+  });
+  return cachedUserHeavy;
+}
+
 // Header precedence:
 //   1. `cf-connecting-ip` — Cloudflare proxy (V2 plan keeps Vercel as origin
 //      with CF as the DNS-proxied front).
@@ -92,7 +137,8 @@ export function heavyLimiter(): RateLimiter {
 //      take the first hop (the public client), not the last.
 //   3. Anonymous bucket — collapses every request without identifiable
 //      headers onto a shared "anon" key; otherwise an attacker could strip
-//      headers to bypass the limiter.
+//      headers to bypass the limiter. The MCP route is auth-gated so this
+//      mostly catches misconfigured proxies, not real anonymous traffic.
 export function ipFromRequest(req: Request): string {
   const cf = req.headers.get("cf-connecting-ip");
   if (cf?.trim()) return cf.trim();

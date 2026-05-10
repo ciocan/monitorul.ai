@@ -26,7 +26,7 @@ Bun is the runtime (Next is invoked via `bun --bun`).
 ## Environment
 
 ```
-ES_URL=https://es.example.com:9200
+ES_URL=https://es-1.example.com:9200,https://es-2.example.com:9200   # comma-separate for round-robin
 ES_API_KEY=<read-only "monitorul_reader" API key minted by monitorul-ii es-init>
 ES_VERIFY_CERTS=                          # leave unset for self-signed; set to 1 only on managed ES
 EMBED_PROVIDER=local                      # local | cloud — picks the embed backend for hybrid search
@@ -56,6 +56,8 @@ NEXT_PUBLIC_SITE_URL=https://monitorul.ai
 
 Validated at startup by [`src/env.ts`](./src/env.ts) (via `@t3-oss/env-nextjs` + Zod). `next dev` and `next build` fail fast on missing or malformed values. Set `SKIP_ENV_VALIDATION=1` to bypass (useful for lint-only CI). The `monitorul_reader` key and the local embedder both come from the [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) repo; `NEXT_PUBLIC_SITE_URL` controls absolute canonical URLs and JSON-LD `@id` values.
 
+Auth + DB env vars (`DATABASE_URL`, `DATABASE_DIRECT_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) have their own provisioning recipe in [`docs/auth-setup.md`](./docs/auth-setup.md) — Neon project + branches, Google Cloud Console consent screen + two OAuth clients, Vercel env-var matrix, plus common-pitfall debugging.
+
 **Embed provider toggle.** `EMBED_PROVIDER=local` (default) calls the FastAPI embedder at `EMBED_URL` — the dev path against the monitorul-ii box. `EMBED_PROVIDER=cloud` calls any OpenAI-compatible `/v1/embeddings` endpoint that serves BGE-M3 (1024-dim) at `EMBED_CLOUD_URL` with `Authorization: Bearer $EMBED_CLOUD_TOKEN` — required when running on Vercel where the local embedder is unreachable. Both sets of creds can stay populated in `.env.local`; flip the single `EMBED_PROVIDER` line to switch. Either provider missing creds → embed returns null → search silently degrades to BM25.
 
 ## Routes (current)
@@ -78,14 +80,17 @@ All ES interaction goes through [`src/lib/search.ts`](./src/lib/search.ts) — t
 
 ## Connecting via MCP
 
-A public, anonymous Model Context Protocol server is mounted on the same Next.js app:
+A public, OAuth-authenticated Model Context Protocol server is mounted on the same Next.js app:
 
 | URL                               | Purpose                                                             |
 | --------------------------------- | ------------------------------------------------------------------- |
 | `https://monitorul.ai/mcp`        | Presentation page — what it is, how to plug it into AI clients      |
 | `https://monitorul.ai/mcp/server` | Streamable-HTTP endpoint — paste this into your client's MCP config |
+| `https://monitorul.ai/cont`       | Account page — connected clients, revoke, sign-out                  |
 
 It exposes 16 Zod-typed tools that wrap the same `lib/search.ts` functions the web pages use, so any MCP-capable client (Claude Desktop, Cursor, Codex, claude.ai) can ask multi-step questions over the corpus and get back hits pinned to one-click-verifiable URLs on this site.
+
+**Prima conectare:** the JSON below is identical to anonymous-MCP setup — `mcp-remote` (and the native MCP clients) handle OAuth transparently. The first request opens a browser to sign in with Google, you accept the consent screen, and the client caches the access + refresh tokens locally. Subsequent calls are silent until you revoke the client from `/cont`.
 
 **Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
@@ -100,7 +105,7 @@ It exposes 16 Zod-typed tools that wrap the same `lib/search.ts` functions the w
 }
 ```
 
-**Cursor / Cline** — point the client's MCP config at `https://monitorul.ai/mcp/server` directly (both speak streamable HTTP natively).
+**Cursor / Cline** — point the client's MCP config at `https://monitorul.ai/mcp/server` directly (both speak streamable HTTP + OAuth natively).
 
 **Codex CLI** — same `mcp-remote` shape as Claude Desktop, in `~/.codex/config.toml`.
 
@@ -110,7 +115,7 @@ A typical session starts with `describe_corpus` (chambers, topics, counts, URL t
 
 Internally the route file is at `src/app/mcp/server/route.ts`. The handler tells `mcp-handler` to dispatch on the literal pathname `/mcp/server` (`streamableHttpEndpoint` config), so the public URL and the file location agree — no rewrites involved.
 
-Rate limit: 30 req/min/IP general, 6 req/min/IP for RRF / kNN-only `search_speeches`. Without `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` set, the limiter no-ops (dev only — production must configure both).
+Rate limit: 30 req/min/IP **and** 30 req/min/user (general); 6 req/min/IP **and** 6 req/min/user (heavy: RRF / kNN-only `search_speeches`). Both axes must clear; either 429s short-circuits. Without `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` set, the limiter no-ops (dev only — production must configure both).
 
 ## Releases
 

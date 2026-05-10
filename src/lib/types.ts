@@ -111,6 +111,41 @@ export interface MoSpeech extends CommonFields {
     topics?: string[];
     summary?: string;
     embedding_text_fingerprint?: string;
+    /**
+     * Discourse-analysis output (Hawkins / voice / DQI / V-Party) — see
+     * the producer at `../monitorul/src/monitorul_ii/extraction/enrichments/discourse.py`
+     * and the retrieval-time guide at `../monitorul/docs/discourse-and-semantic-search.md`.
+     * Sparse: only populated for substantive speeches that have been
+     * coded by `monitorul-ii analyze`.
+     */
+    discourse?: {
+      hawkins?: {
+        score: 0 | 1 | 2;
+        framework_confidence: number;
+        marker_count: number;
+        marker_kinds?: string[];
+      };
+      vparty?: {
+        score: 0 | 1 | 2;
+        framework_confidence: number;
+        marker_count: number;
+        marker_kinds?: string[];
+      };
+      voice?: {
+        dominant_voice: string;
+        voices_seen: string[];
+      };
+      dqi?: {
+        level_of_justification: 0 | 1 | 2 | 3;
+        content_of_justification: "none" | "group_interest" | "common_good" | "mixed";
+        respect_for_groups: 0 | 1 | 2;
+        respect_for_demands: 0 | 1 | 2;
+        respect_for_counterarguments: 0 | 1 | 2;
+        constructive_politics: "positional" | "alternative_proposal" | "mediating_proposal";
+      };
+    };
+    discourse_producer?: string;
+    discourse_text_fingerprint?: string;
   };
   slug: string;
   url_path: string;

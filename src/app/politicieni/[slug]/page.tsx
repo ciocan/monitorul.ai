@@ -159,6 +159,7 @@ export default async function PersonPage({ params, searchParams }: PageProps) {
               selectedYear={selectedYear}
               slug={person.slug}
               className="mb-8"
+              stretch
             />
           ) : null}
           <ContributionsGraph

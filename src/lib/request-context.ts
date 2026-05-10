@@ -35,6 +35,11 @@ export interface RequestContext {
   // (`search_speeches`, `describe_corpus`, …). Lets us count tool-call
   // frequency without joining on op + args.
   tool?: string;
+  // For `surface === "mcp"`, the Better Auth user ID owning the bearer
+  // token. Stamped onto every `mo_query_log` row so abuse + per-user
+  // analytics can attribute traffic. Always populated on the MCP surface
+  // (the route is auth-gated); absent on web / api surfaces today.
+  userId?: string;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();

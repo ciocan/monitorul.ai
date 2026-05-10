@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { CopyButton } from "@/components/copy-button";
 import { Dateline } from "@/components/dateline";
+import { McpConfigBlock } from "@/components/mcp-config-block";
+import { McpEndpointCopyButton, McpEndpointUrl } from "@/components/mcp-endpoint-url";
 import { env } from "@/env";
 
 // Public-facing presentation page for the MCP server. Sits at /mcp; the
@@ -14,7 +15,7 @@ export const revalidate = 3600;
 
 const TITLE = "MCP — Server pentru asistenți AI";
 const DESCRIPTION =
-  "Server public, anonim, pentru protocolul Model Context Protocol. Permite oricărui asistent AI (Claude Desktop, Cursor, Codex, claude.ai) să interogheze corpusul parlamentar românesc cu citate verificabile.";
+  "Server public pentru protocolul Model Context Protocol. Permite oricărui asistent AI (Claude Desktop, Cursor, Codex, claude.ai) să interogheze corpusul parlamentar românesc cu citate verificabile, autentificat cu Google.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -78,6 +79,7 @@ interface TocItem {
 const TOC: TocItem[] = [
   { id: "ce-este", label: "Ce este MCP" },
   { id: "endpoint", label: "Endpoint și conectare" },
+  { id: "prima-conectare", label: "Prima conectare" },
   { id: "claude-desktop", label: "Claude Desktop" },
   { id: "cursor", label: "Cursor și Cline" },
   { id: "codex", label: "Codex CLI" },
@@ -92,7 +94,7 @@ export default function McpPage() {
     <article className="mx-auto w-full max-w-(--breakpoint-lg) px-6 py-12 sm:py-16">
       <McpJsonLd />
 
-      <Dateline parts={["Server MCP", "Monitorul.ai", "Acces public, anonim"]} />
+      <Dateline parts={["Server MCP", "Monitorul.ai", "Acces public · Google OAuth"]} />
 
       <header className="mt-6 border-b border-border pb-10">
         <h1 className="font-display text-4xl leading-[1.05] text-ink-16 sm:text-5xl lg:text-6xl">
@@ -111,17 +113,19 @@ export default function McpPage() {
         <h2 className="label-mono text-ink-30">Endpoint</h2>
         <div className="mt-3 flex items-stretch overflow-hidden border border-border bg-paper-96">
           <code className="flex-1 truncate px-4 py-3 font-mono text-sm text-ink-16 sm:text-base">
-            {ENDPOINT_URL}
+            <McpEndpointUrl fallback={ENDPOINT_URL} />
           </code>
-          <CopyButton
-            value={ENDPOINT_URL}
-            ariaLabel={`Copiază URL-ul endpointului: ${ENDPOINT_URL}`}
-            className="border-l border-border"
-          />
+          <McpEndpointCopyButton fallback={ENDPOINT_URL} className="border-l border-border" />
         </div>
         <p className="mt-3 max-w-prose text-sm leading-relaxed text-ink-45">
-          Streamable HTTP. Public, anonim, fără cheie API în versiunea curentă. Limita de utilizare:
-          30 cereri/minut/IP, sau 6 cereri/minut/IP pentru căutare hibridă (RRF / kNN-only). Vezi{" "}
+          Streamable HTTP, autentificat cu OAuth 2.0 (Google). La prima conectare asistentul îți
+          deschide o fereastră de browser pentru autentificare; conectările următoare sunt
+          silențioase până la revocare din{" "}
+          <Link href="/cont" className="underline underline-offset-4 hover:text-ink-16">
+            /cont
+          </Link>
+          . Limita: 30 cereri/min per cont și per IP; 6 cereri/min pentru căutare hibridă (RRF /
+          kNN-only). Vezi{" "}
           <a href="#limite" className="underline underline-offset-4 hover:text-ink-16">
             Limite și costuri
           </a>
@@ -169,30 +173,59 @@ export default function McpPage() {
       <Section id="endpoint" title="Endpoint și conectare">
         <p>
           Pentru orice client MCP modern, conectarea înseamnă să-i dai URL-ul de mai sus. Clientul
-          face un handshake (<code>initialize</code>), citește lista de instrumente (
-          <code>tools/list</code>), apoi le invocă pe rând (<code>tools/call</code>). Toată
-          conversația se întâmplă peste HTTP cu transport <em>streamable HTTP</em>.
+          face un handshake (<code>initialize</code>), descoperă serverul de autorizare prin{" "}
+          <code>/.well-known/oauth-protected-resource</code>, parcurge dansul OAuth 2.0 cu PKCE și
+          DCR, citește lista de instrumente (<code>tools/list</code>), apoi le invocă pe rând (
+          <code>tools/call</code>). Toată conversația se întâmplă peste HTTP cu transport{" "}
+          <em>streamable HTTP</em>.
         </p>
         <p>
-          Versiunea curentă este publică și anonimă. O versiune cu autentificare OAuth, cu
-          rate-limit per cheie și cu acces la date suplimentare urmează în V2; URL-ul rămâne
-          același.
+          Configurația din clientul tău rămâne aceeași indiferent de autentificare —{" "}
+          <code>mcp-remote</code> (învelișul <code>npx</code> pe care îl recomandăm pentru Claude
+          Desktop și Codex) gestionează transparent fluxul OAuth: îți deschide o fereastră de
+          browser la prima cerere, salvează cheile local, le reîmprospătează când expiră.
+        </p>
+      </Section>
+
+      <Section id="prima-conectare" title="Prima conectare">
+        <p>Pașii pe care îi vezi în browser, în ordine:</p>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-base leading-relaxed text-ink-30 marker:text-ink-45">
+          <li>
+            Asistentul deschide o fereastră de browser cu URL-ul de autorizare al monitorul.ai.
+          </li>
+          <li>
+            Dacă nu ești autentificat, te trimitem la{" "}
+            <Link href="/cont/intra" className="underline underline-offset-4 hover:text-ink-16">
+              /cont/intra
+            </Link>
+            . Apeși <em>Conectare cu Google</em> și treci prin selecția standard de cont Google.
+          </li>
+          <li>
+            După autentificare, îți afișăm un ecran de consimțământ care arată numele asistentului,
+            URL-ul lui de redirect și ce permisiuni cere. Apeși <em>Acceptă și conectează</em>.
+          </li>
+          <li>
+            Browserul închide fereastra (sau te lasă să o închizi tu) și asistentul are de acum o
+            cheie de acces și o cheie de reîmprospătare.
+          </li>
+        </ol>
+        <p className="mt-4">
+          Conectările ulterioare sunt silențioase — atâta timp cât nu revoci accesul din{" "}
+          <Link href="/cont" className="underline underline-offset-4 hover:text-ink-16">
+            /cont
+          </Link>
+          , <code>mcp-remote</code> își reîmprospătează automat cheia când expiră (la ~24 ore) și
+          asistentul tău nu observă niciodată că autentificarea s-a întâmplat.
         </p>
       </Section>
 
       <Section id="claude-desktop" title="Claude Desktop">
         <p>Adaugă serverul în fișierul de configurare al aplicației:</p>
-        <ConfigBlock
+        <McpConfigBlock
           path="~/Library/Application Support/Claude/claude_desktop_config.json (macOS)"
           alt="%APPDATA%\Claude\claude_desktop_config.json (Windows)"
-          json={{
-            mcpServers: {
-              "monitorul-ai": {
-                command: "npx",
-                args: ["-y", "mcp-remote", ENDPOINT_URL],
-              },
-            },
-          }}
+          serverKey="mcpServers"
+          fallback={ENDPOINT_URL}
         />
         <p>
           Repornește Claude Desktop. Iconița de instrumente (ciocanul) ar trebui să afișeze cele 16
@@ -209,13 +242,9 @@ export default function McpPage() {
         </p>
         <div className="mt-3 flex items-stretch overflow-hidden border border-border bg-paper-96">
           <code className="flex-1 truncate px-4 py-3 font-mono text-sm text-ink-16">
-            {ENDPOINT_URL}
+            <McpEndpointUrl fallback={ENDPOINT_URL} />
           </code>
-          <CopyButton
-            value={ENDPOINT_URL}
-            ariaLabel={`Copiază URL-ul endpointului: ${ENDPOINT_URL}`}
-            className="border-l border-border"
-          />
+          <McpEndpointCopyButton fallback={ENDPOINT_URL} className="border-l border-border" />
         </div>
       </Section>
 
@@ -223,16 +252,10 @@ export default function McpPage() {
         <p>
           Codex acceptă același tip de configurare ca Claude Desktop, prin <code>mcp-remote</code>:
         </p>
-        <ConfigBlock
+        <McpConfigBlock
           path="~/.codex/config.toml"
-          json={{
-            mcp_servers: {
-              "monitorul-ai": {
-                command: "npx",
-                args: ["-y", "mcp-remote", ENDPOINT_URL],
-              },
-            },
-          }}
+          serverKey="mcp_servers"
+          fallback={ENDPOINT_URL}
         />
       </Section>
 
@@ -289,26 +312,34 @@ export default function McpPage() {
 
       <Section id="limite" title="Limite și costuri">
         <p>
-          Serverul este public și gratuit. Pentru a-l proteja de abuz aplicăm două nivele de
-          rate-limit per IP:
+          Serverul este public și gratuit. Aplicăm rate-limit pe două axe (per cont și per IP) și în
+          două nivele de strictețe (general și greu pentru căutarea hibridă). Cererile trebuie să
+          treacă pe ambele axe — așa o cheie scursă peste mai multe IP-uri și un IP împărțit de mai
+          multe conturi sunt limitate independent.
         </p>
         <ul className="mt-4 space-y-2 text-base leading-relaxed text-ink-30">
           <li>
-            <strong>30 cereri / minut / IP</strong> — orice apel de tool. Suficient pentru
-            conversații normale, inclusiv lanțuri de tool-uri în care asistentul rulează 5–10
-            apeluri pe rând.
+            <strong>30 cereri / minut / cont</strong> și <strong>30 cereri / minut / IP</strong> —
+            orice apel de tool. Suficient pentru conversații normale, inclusiv lanțuri de tool-uri
+            în care asistentul rulează 5–10 apeluri pe rând.
           </li>
           <li>
-            <strong>6 cereri / minut / IP</strong> — căutare hibridă cu RRF sau kNN. Aceste apeluri
-            ating serviciul de embeddings; limita strânsă previne folosirea disproporționată.
+            <strong>6 cereri / minut / cont</strong> și <strong>6 cereri / minut / IP</strong> —
+            căutare hibridă cu RRF sau kNN. Aceste apeluri ating serviciul de embeddings; limita
+            strânsă previne folosirea disproporționată.
           </li>
         </ul>
         <p>
-          Răspunsurile la căutare sunt în <em>cataloguer mode</em>: hit-urile vin cu identificator,
-          URL absolut verificabil, fragment de 240 de caractere și metadata vorbitorului. Textul
-          integral al unui discurs se cere separat prin <code>get_speech(record_id)</code> — în
-          felul acesta o conversație lungă se încadrează în context window-ul asistentului fără
-          paginări inutile.
+          Cheile de acces durează ~24 ore; cheile de reîmprospătare ~30 zile sau până la revocare
+          din{" "}
+          <Link href="/cont" className="underline underline-offset-4 hover:text-ink-16">
+            /cont
+          </Link>
+          . Răspunsurile la căutare sunt în <em>cataloguer mode</em>: hit-urile vin cu
+          identificator, URL absolut verificabil, fragment de 240 de caractere și metadata
+          vorbitorului. Textul integral al unui discurs se cere separat prin{" "}
+          <code>get_speech(record_id)</code> — în felul acesta o conversație lungă se încadrează în
+          context window-ul asistentului fără paginări inutile.
         </p>
       </Section>
 
@@ -379,28 +410,6 @@ function ToolGroup({ label, tools }: { label: string; tools: ToolRow[] }) {
   );
 }
 
-function ConfigBlock({
-  path,
-  alt,
-  json,
-}: {
-  path: string;
-  alt?: string;
-  json: Record<string, unknown>;
-}) {
-  return (
-    <div className="mt-4 overflow-hidden rounded border border-border bg-paper-96">
-      <div className="border-b border-border px-4 py-2 font-mono text-xs text-ink-45">
-        {path}
-        {alt ? <span className="block text-ink-45">{alt}</span> : null}
-      </div>
-      <pre className="overflow-x-auto px-4 py-3 font-mono text-sm leading-relaxed text-ink-16">
-        {JSON.stringify(json, null, 2)}
-      </pre>
-    </div>
-  );
-}
-
 function McpJsonLd() {
   const ld = {
     "@context": "https://schema.org",
@@ -414,7 +423,10 @@ function McpJsonLd() {
       name: "monitorul.ai",
       url: SITE_URL,
     },
-    isAccessibleForFree: true,
+    // Free of charge but auth-gated. `false` is the schema.org-correct
+    // shape for "requires login"; the server is still gratis once you've
+    // authenticated.
+    isAccessibleForFree: false,
   };
   return (
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />

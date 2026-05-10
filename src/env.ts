@@ -3,7 +3,19 @@ import * as z from "zod";
 
 export const env = createEnv({
   server: {
-    ES_URL: z.url(),
+    // One or more ES node URLs, comma-separated. The Node.js client load-
+    // balances across them with round-robin by default and takes a dead node
+    // out of rotation for ~60s on connection failure.
+    ES_URL: z
+      .string()
+      .min(1)
+      .transform((v) =>
+        v
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.url()).min(1)),
     ES_API_KEY: z.string().min(1),
     // Self-hosted ES (default monitorul-ii box) ships a self-signed cert; cert
     // verification is opt-in via "1" (e.g. against managed ES with a public chain).
@@ -61,6 +73,29 @@ export const env = createEnv({
               .filter(Boolean)
           : [],
       ),
+    // Neon Postgres for Better Auth's user / session / OAuth tables. The
+    // `DATABASE_URL` is the pooler URL (`-pooler.neon.tech`) used by Vercel
+    // functions at runtime — short-lived, pgbouncer-fronted. The
+    // `DATABASE_DIRECT_URL` is the same branch's direct URL, used by
+    // `drizzle-kit` for migrations from the laptop (pooler doesn't support
+    // every command drizzle-kit emits). Both required: drizzle-kit reads
+    // `DATABASE_DIRECT_URL`, the runtime client reads `DATABASE_URL`.
+    DATABASE_URL: z.url(),
+    DATABASE_DIRECT_URL: z.url(),
+    // Better Auth signing key (HS256 for sessions + JWT bearer tokens).
+    // 32-byte hex, generated via `openssl rand -hex 32`. Rotation
+    // invalidates all refresh tokens — users re-auth on next call.
+    BETTER_AUTH_SECRET: z.string().min(32),
+    // Public-facing Better Auth base URL. Drives the OAuth issuer claim
+    // and the cookie domain. `https://monitorul.ai` in prod, the Vercel
+    // preview URL on `*.vercel.app`, `http://localhost:3020` locally.
+    BETTER_AUTH_URL: z.url(),
+    // Google OAuth client (one per environment — prod and dev clients
+    // configured separately in Google Cloud Console). The MCP plugin's DCR
+    // flow does NOT use these directly; they back the social-provider
+    // sign-in that the OAuth-consent flow eventually delegates to.
+    GOOGLE_CLIENT_ID: z.string().min(1),
+    GOOGLE_CLIENT_SECRET: z.string().min(1),
   },
   client: {
     NEXT_PUBLIC_SITE_URL: z.url().default("https://monitorul.ai"),

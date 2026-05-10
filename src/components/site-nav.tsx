@@ -72,7 +72,11 @@ export function SiteNavDesktop() {
   );
 }
 
-export function SiteNavMobile() {
+// `accountSlot` is rendered inside the open mobile-nav dialog, after the
+// section list. The parent (a server component) injects `<AccountMobileSection />`
+// there so the session lookup happens server-side, while this component
+// stays client-side for the open/close state.
+export function SiteNavMobile({ accountSlot }: { accountSlot?: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
 
@@ -139,6 +143,7 @@ export function SiteNavMobile() {
               />
             ))}
           </nav>
+          {accountSlot ? <div className="mt-auto">{accountSlot}</div> : null}
         </div>
       ) : null}
     </>

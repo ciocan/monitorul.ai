@@ -1,11 +1,19 @@
+import { withMcpAuth } from "better-auth/plugins";
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
+import { auth } from "@/lib/auth";
 import { describeCorpus } from "@/lib/describe-corpus";
 import { embedQuery } from "@/lib/embed";
 import { ES_INDEX, esClient } from "@/lib/es-client";
 import { requestContext, toCatalogueHit, toPersonHit } from "@/lib/mcp-adapters";
-import { generalLimiter, heavyLimiter, ipFromRequest } from "@/lib/ratelimit";
+import {
+  generalLimiter,
+  heavyLimiter,
+  ipFromRequest,
+  userHeavyLimiter,
+  userLimiter,
+} from "@/lib/ratelimit";
 import {
   aggSpeechesByPartyYear,
   committeePage,
@@ -33,11 +41,15 @@ import type { Chamber, MoSpeech, SearchResult } from "@/lib/types";
 // behaviour lives in the lib layer; this file is only schema + plumbing.
 //
 // Boundary:
-//   - Hosting: Vercel (this Next.js app), `/api/mcp/{mcp,sse}`.
+//   - Hosting: Vercel (this Next.js app), `/mcp/server`.
 //   - Transport: streamable HTTP (default). SSE disabled — superseded by
 //     streamable HTTP per the 2025-03-26 MCP spec.
-//   - Rate limit: per-IP sliding window (general + heavy tier for RRF/kNN).
-//   - Auth: anonymous V1 (per docs/mcp.md decision matrix; per-key V2).
+//   - Rate limit: per-IP AND per-user sliding window (general + heavy tier
+//     for RRF/kNN), defense in depth.
+//   - Auth: gated by Better Auth's MCP plugin via `withMcpAuth`. Every
+//     request carries a session-derived bearer token; unauthenticated
+//     callers get 401 + the spec-blessed `WWW-Authenticate` header that
+//     points at `/.well-known/oauth-protected-resource`.
 //
 // Tool surface evolves vertically; if you add a tool here, its shape lives in
 // `lib/search.ts` first and the cataloguer adapter (when applicable) in
@@ -655,32 +667,48 @@ function resolvePublicOrigin(req: Request): string {
   }
 }
 
-// Wrap the handler with rate limiting + IP extraction. Heavy tier targets
-// `search_speeches` only when `rank_fusion ∈ {rrf, knn-only}` — the modes that
-// hit the embed service. The general tier covers everything else. We can't
-// inspect the parsed tool-call body without pre-buffering the request stream,
-// so we rate-limit on the request body when we can read it (POST /api/mcp/mcp)
-// and otherwise fall back to general-tier only.
-async function handlerWithRateLimit(req: Request): Promise<Response> {
-  const ip = ipFromRequest(req);
-  const origin = resolvePublicOrigin(req);
-  const general = await generalLimiter().limit(`g:${ip}`);
-  if (!general.success) {
-    return new Response(
-      JSON.stringify({
-        error: "Rate limit exceeded (general).",
-        limit: general.limit,
-        retry_after_ms: Math.max(0, general.reset - Date.now()),
-      }),
-      {
-        status: 429,
-        headers: {
-          "content-type": "application/json",
-          "retry-after": Math.ceil(Math.max(0, general.reset - Date.now()) / 1000).toString(),
-        },
+// Wrap the handler with rate limiting + IP extraction. Two axes per tier
+// (per-IP, per-user) — both must clear; whichever 429s first short-circuits.
+// Heavy tier targets `search_speeches` only when `rank_fusion ∈ {rrf,
+// knn-only}` — the modes that hit the embed service. The general tier
+// covers everything else.
+//
+// `session` is supplied by Better Auth's `withMcpAuth` wrapper — every
+// request landing here has a verified bearer token, so `session.userId` is
+// always present and feeds both `requestContext` (for query-log attribution)
+// and the per-user limiters.
+function rateLimitedResponse(decision: { limit: number; reset: number }, scope: string): Response {
+  const retryAfterMs = Math.max(0, decision.reset - Date.now());
+  return new Response(
+    JSON.stringify({
+      error: `Rate limit exceeded (${scope}).`,
+      limit: decision.limit,
+      retry_after_ms: retryAfterMs,
+    }),
+    {
+      status: 429,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": Math.ceil(retryAfterMs / 1000).toString(),
       },
-    );
-  }
+    },
+  );
+}
+
+async function handlerWithRateLimit(req: Request, session: { userId: string }): Promise<Response> {
+  const ip = ipFromRequest(req);
+  const userId = session.userId;
+  const origin = resolvePublicOrigin(req);
+  // General tier — both axes in parallel. The user axis catches a single
+  // account spread across rotating IPs (residential proxies, cloud
+  // functions); the IP axis catches a single IP regardless of how many
+  // accounts cycle through.
+  const [generalIp, generalUser] = await Promise.all([
+    generalLimiter().limit(`g:ip:${ip}`),
+    userLimiter().limit(`g:user:${userId}`),
+  ]);
+  if (!generalIp.success) return rateLimitedResponse(generalIp, "general:ip");
+  if (!generalUser.success) return rateLimitedResponse(generalUser, "general:user");
   // Heavy-tier sniff: peek at the body without consuming it. Streamable HTTP
   // sends JSON-RPC; we look at the parsed `params.name` / `params.arguments`
   // shape. If body parsing fails (non-JSON, GET request), skip the heavy gate.
@@ -704,23 +732,12 @@ async function handlerWithRateLimit(req: Request): Promise<Response> {
           toolName === "search_speeches" &&
           (fusion === "rrf" || fusion === "knn-only" || fusion === undefined);
         if (isHeavy) {
-          const heavy = await heavyLimiter().limit(`h:${ip}`);
-          if (!heavy.success) {
-            return new Response(
-              JSON.stringify({
-                error: "Rate limit exceeded (heavy: RRF/kNN search_speeches).",
-                limit: heavy.limit,
-                retry_after_ms: Math.max(0, heavy.reset - Date.now()),
-              }),
-              {
-                status: 429,
-                headers: {
-                  "content-type": "application/json",
-                  "retry-after": Math.ceil(Math.max(0, heavy.reset - Date.now()) / 1000).toString(),
-                },
-              },
-            );
-          }
+          const [heavyIp, heavyUser] = await Promise.all([
+            heavyLimiter().limit(`h:ip:${ip}`),
+            userHeavyLimiter().limit(`h:user:${userId}`),
+          ]);
+          if (!heavyIp.success) return rateLimitedResponse(heavyIp, "heavy:ip");
+          if (!heavyUser.success) return rateLimitedResponse(heavyUser, "heavy:user");
         }
       }
       // Reconstruct the request with the body still readable downstream.
@@ -731,16 +748,26 @@ async function handlerWithRateLimit(req: Request): Promise<Response> {
       });
     } catch {
       // Body unreadable (binary, malformed) — let the handler reject it
-      // downstream. We've still applied the general limiter.
+      // downstream. We've still applied the general limiters.
     }
   }
   // Run the actual handler inside the per-request scope. `origin` reaches the
-  // cataloguer adapter (absolute URLs round-trip on the actual host); `surface`
-  // and `tool` reach `lib/search.ts.logQuery` so each row in `mo_query_log`
-  // carries the entry-point attribution.
-  return requestContext.run({ origin, surface: "mcp", tool: toolName }, () => handler(cloned));
+  // cataloguer adapter (absolute URLs round-trip on the actual host); `surface`,
+  // `tool`, and `userId` reach `lib/search.ts.logQuery` so each row in
+  // `mo_query_log` carries entry-point + per-user attribution.
+  return requestContext.run(
+    { origin, surface: "mcp", tool: toolName, userId: session.userId },
+    () => handler(cloned),
+  );
 }
 
-export const GET = handlerWithRateLimit;
-export const POST = handlerWithRateLimit;
-export const DELETE = handlerWithRateLimit;
+// `withMcpAuth` returns a `(req: Request) => Promise<Response>`. Unauthenticated
+// callers get 401 with `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`
+// — the spec-blessed pointer that lets DCR-capable clients discover this
+// issuer and start the OAuth dance. Authenticated calls land in
+// `handlerWithRateLimit` with a verified session.
+const authedHandler = withMcpAuth(auth, handlerWithRateLimit);
+
+export const GET = authedHandler;
+export const POST = authedHandler;
+export const DELETE = authedHandler;

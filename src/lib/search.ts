@@ -78,6 +78,11 @@ interface QueryLogEntry {
   // `describe_corpus`, …). The `op` field carries the lib function name; this
   // carries the public tool name. Null for non-MCP surfaces.
   tool: string | null;
+  // For `surface === "mcp"`, the Better Auth user ID — every MCP call
+  // carries one because the route is auth-gated. Null on `web` / `api`
+  // surfaces (anonymous web traffic, the per-user signing of the autocomplete
+  // route doesn't propagate here yet).
+  user_id: string | null;
   took_ms: number;
   es_took_ms: number | null;
   hits_total: number | null;
@@ -173,6 +178,7 @@ async function timed<T>(
       // route handlers stamp the context explicitly.
       surface: ctx?.surface ?? "web",
       tool: ctx?.tool ?? null,
+      user_id: ctx?.userId ?? null,
       took_ms: Math.round(performance.now() - start),
       es_took_ms: esTookMs,
       hits_total: hitsTotal,
@@ -982,6 +988,17 @@ export interface SearchSpeechesParams {
   // via `listPartyEnumeration`). Multiple raw values are OR'd because the same
   // logical group may appear under several spellings in the corpus.
   speakerPartyRaw?: string[];
+  // Discourse-analysis filters (Hawkins / V-Party / DQI). Sparse: only
+  // populated for substantive speeches that have been LLM-coded by
+  // `monitorul-ii analyze`. Records without discourse data are excluded
+  // when any of these filters is set; pass `discourseRequired: true`
+  // explicitly when you want to scope to coded records without filtering
+  // on a score. See `../monitorul/docs/discourse-and-semantic-search.md`
+  // for the seven canonical query patterns.
+  hawkinsScores?: Array<0 | 1 | 2>;
+  vpartyScores?: Array<0 | 1 | 2>;
+  dqiLevelMin?: 0 | 1 | 2 | 3;
+  discourseRequired?: boolean;
   isSubstantive?: boolean;
   page?: number;
   pageSize?: number;
@@ -1020,6 +1037,23 @@ function speechFilters(p: SearchSpeechesParams): QueryDslQueryContainer[] {
   }
   if (p.speakerPartyRaw && p.speakerPartyRaw.length > 0) {
     filters.push({ terms: { "speaker.party_group_at_time": p.speakerPartyRaw } });
+  }
+  // Discourse filters. `terms` over the byte-typed score fields is the
+  // cheapest possible filter (cardinality 3); the `exists` clause for
+  // `discourseRequired` excludes records that haven't been coded yet.
+  if (p.hawkinsScores && p.hawkinsScores.length > 0) {
+    filters.push({ terms: { "enrichments.discourse.hawkins.score": p.hawkinsScores } });
+  }
+  if (p.vpartyScores && p.vpartyScores.length > 0) {
+    filters.push({ terms: { "enrichments.discourse.vparty.score": p.vpartyScores } });
+  }
+  if (p.dqiLevelMin !== undefined) {
+    filters.push({
+      range: { "enrichments.discourse.dqi.level_of_justification": { gte: p.dqiLevelMin } },
+    });
+  }
+  if (p.discourseRequired) {
+    filters.push({ exists: { field: "enrichments.discourse" } });
   }
   return filters;
 }

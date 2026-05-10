@@ -104,6 +104,7 @@ export default async function SessionsIndexPage({ searchParams }: PageProps) {
             hrefForYear={(year) => `/mo?year=${year}`}
             navAriaLabel="Selectează anul sesiunilor"
             countNoun={{ one: "sesiune", few: "sesiuni", many: "de sesiuni" }}
+            stretch
           />
         </section>
       ) : null}

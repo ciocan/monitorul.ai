@@ -132,6 +132,7 @@ export default async function PoliticiansIndexPage({ searchParams }: PageProps) 
             hrefForYear={(year) => hrefForRank({ year, mode })}
             navAriaLabel="Selectează anul activității"
             countNoun={{ one: "discurs", few: "discursuri", many: "de discursuri" }}
+            stretch
           />
         </section>
       ) : null}

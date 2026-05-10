@@ -1,8 +1,13 @@
 import Link from "next/link";
 
+import { McpEndpointUrl } from "@/components/mcp-endpoint-url";
 import { SiteSearch } from "@/components/site-search";
+import { Button } from "@/components/ui/button";
+import { env } from "@/env";
 import { formatCount } from "@/lib/format";
 import { type ArchiveStats, type ArchiveStatKey, getArchiveStats } from "@/lib/search";
+
+const MCP_ENDPOINT = `${env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}/mcp/server`;
 
 export const revalidate = 3600;
 
@@ -87,6 +92,8 @@ export default async function Home() {
         </ul>
       </section>
 
+      <McpRegister />
+
       <section aria-labelledby="metodologie" className="mt-16 border-t border-border pt-10">
         <h2 id="metodologie" className="label-mono text-ink-30">
           Pe scurt
@@ -162,5 +169,78 @@ function EntryPoint({
         <p className="mt-2 text-sm leading-relaxed text-ink-30">{description}</p>
       </Link>
     </li>
+  );
+}
+
+// MCP announcement, treated as a freestanding record (DESIGN.md §5: full
+// 1px border, `xl` internal padding, `Paper-96` tonal layer for emphasis).
+// Quietly louder than the surrounding sections — bigger headline, typeset
+// endpoint URL, four-fact register, primary CTA — but no decorative chrome:
+// no gradient, no icon, no left-border accent stripe, no hero-metric.
+// Importance comes from typography + placement + the live endpoint, not
+// from marketing visuals (per DESIGN.md and PRODUCT.md).
+function McpRegister() {
+  return (
+    <section aria-labelledby="mcp-public" className="mt-16">
+      <div className="border border-border bg-paper-96 p-6 sm:p-10">
+        <p className="label-mono text-ink-30">
+          Server MCP <span className="px-1.5 text-ink-45">·</span> Monitorul.ai
+          <span className="px-1.5 text-ink-45">·</span> Acces public, autentificat
+        </p>
+
+        <h2
+          id="mcp-public"
+          className="font-display mt-5 max-w-3xl text-2xl leading-[1.15] text-ink-16 sm:text-3xl lg:text-4xl"
+        >
+          Conectați un asistent AI direct la arhivă.
+        </h2>
+
+        <p className="mt-5 max-w-prose text-base leading-relaxed text-ink-30">
+          Cele 16 instrumente de căutare și interogare folosite de paginile site-ului sunt apelabile
+          direct din Claude Desktop, Cursor, Cline și Codex prin <em>Model Context Protocol</em>.
+          Răspunsurile vin cu link-uri verificabile pe acest site, citabile la fel ca paginile pe
+          care le citiți acum.
+        </p>
+
+        <div className="mt-8 flex flex-col items-stretch overflow-hidden border border-border bg-background sm:flex-row">
+          <code className="flex-1 truncate px-4 py-3 font-mono text-sm text-ink-16 sm:text-base">
+            <McpEndpointUrl fallback={MCP_ENDPOINT} />
+          </code>
+          <span className="label-mono inline-flex items-center border-t border-border bg-paper-96 px-4 py-3 text-ink-30 sm:border-t-0 sm:border-l">
+            Streamable HTTP <span className="px-2 text-ink-45">·</span> OAuth 2.0
+          </span>
+        </div>
+
+        <dl className="mt-8 grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-4">
+          <McpFact label="Instrumente" value="16" />
+          <McpFact label="Autentificare" value="Google" />
+          <McpFact label="Cheie acces" value="~24h" />
+          <McpFact label="Limită" value="30 / min" />
+        </dl>
+
+        <div className="mt-8 flex flex-wrap items-baseline gap-x-6 gap-y-3 border-t border-border pt-6">
+          <Button asChild size="lg">
+            <Link href="/mcp">Documentație și conectare</Link>
+          </Button>
+          <Link
+            href="/cont"
+            className="label-mono text-ink-30 underline underline-offset-4 hover:text-ink-16"
+          >
+            Cont și asistenți conectați →
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function McpFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="label-mono text-ink-45">{label}</dt>
+      <dd className="font-mono-meta mt-1 text-2xl text-ink-16" data-tabular-nums="">
+        {value}
+      </dd>
+    </div>
   );
 }

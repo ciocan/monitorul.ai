@@ -29,6 +29,11 @@ export interface YearSparkbarProps {
   // "Anul 2024: 209".
   countNoun: { one: string; few: string; many: string };
   className?: string;
+  // When true, bars stretch to fill the container width instead of using the
+  // fixed 12px bar width. Used on /mo where there's room to let the register
+  // sprawl across the page; the registers with denser layouts keep the
+  // compact default.
+  stretch?: boolean;
 }
 
 const BAR_WIDTH = 12;
@@ -59,14 +64,15 @@ export function YearSparkbar({
   navAriaLabel,
   countNoun,
   className,
+  stretch = false,
 }: YearSparkbarProps) {
   const series = fillYearGaps(yearlyCounts, selectedYear);
   const max = series.reduce((m, c) => Math.max(m, c.count), 0);
   return (
     <nav aria-label={navAriaLabel} className={cn("border-y border-border py-4", className)}>
-      <div className="overflow-x-auto pb-1">
+      <div className={stretch ? "pb-1" : "overflow-x-auto pb-1"}>
         <ol
-          className="flex items-end"
+          className={cn("flex items-end", stretch && "w-full")}
           style={{ gap: `${BAR_GAP}px`, minHeight: `${BAR_MAX_HEIGHT + 18}px` }}
         >
           {series.map((entry) => {
@@ -81,7 +87,10 @@ export function YearSparkbar({
                 ? `Anul ${entry.year}: fără ${countNoun.few}`
                 : `Anul ${entry.year}: ${pluralRo(entry.count, countNoun.one, countNoun.few, countNoun.many)}`;
             return (
-              <li key={entry.year} className="flex flex-col items-center">
+              <li
+                key={entry.year}
+                className={cn("flex flex-col items-center", stretch && "min-w-0 flex-1")}
+              >
                 <Link
                   href={hrefForYear(entry.year)}
                   scroll={false}
@@ -89,7 +98,10 @@ export function YearSparkbar({
                   aria-current={isSelected ? "true" : undefined}
                   aria-label={ariaLabel}
                   title={ariaLabel}
-                  className="group flex flex-col items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className={cn(
+                    "group flex flex-col items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                    stretch && "w-full",
+                  )}
                 >
                   <span
                     aria-hidden="true"
@@ -105,7 +117,10 @@ export function YearSparkbar({
                           ? "bg-azure-4"
                           : "bg-azure-2 group-hover:bg-azure-3",
                     )}
-                    style={{ width: `${BAR_WIDTH}px`, height: `${barHeight}px` }}
+                    style={{
+                      width: stretch ? "100%" : `${BAR_WIDTH}px`,
+                      height: `${barHeight}px`,
+                    }}
                   />
                   <span
                     aria-hidden="true"
@@ -114,7 +129,7 @@ export function YearSparkbar({
                       isSelected ? "text-ink-16" : "text-ink-45 group-hover:text-ink-30",
                     )}
                     style={{
-                      width: `${BAR_WIDTH}px`,
+                      width: stretch ? "100%" : `${BAR_WIDTH}px`,
                       textAlign: "center",
                       letterSpacing: "0.04em",
                     }}
