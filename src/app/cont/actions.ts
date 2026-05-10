@@ -1,5 +1,6 @@
 "use server";
 
+import { checkBotId } from "botid/server";
 import { and, eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -13,6 +14,10 @@ import { db, schema } from "@/lib/db/client";
 // correct shape — Next.js converts it into a full-page navigation that
 // breaks out of the form's response.
 export async function signInWithGoogle(formData: FormData): Promise<void> {
+  const verification = await checkBotId();
+  if (verification.isBot) {
+    throw new Error("Access denied");
+  }
   const callbackURL =
     typeof formData.get("callbackURL") === "string"
       ? (formData.get("callbackURL") as string)
@@ -31,6 +36,10 @@ export async function signInWithGoogle(formData: FormData): Promise<void> {
 // the auth plugin chain) handles the Set-Cookie -> cookies() bridging so
 // the cleared session cookie reaches the browser.
 export async function signOutAction(): Promise<void> {
+  const verification = await checkBotId();
+  if (verification.isBot) {
+    throw new Error("Access denied");
+  }
   await auth.api.signOut({ headers: await headers() });
   redirect("/");
 }
@@ -45,6 +54,10 @@ export async function signOutAction(): Promise<void> {
 // `clientId` is the DCR-issued OAuth client ID (not the user's row ID),
 // scoped to the authenticated user via the session check below.
 export async function revokeClientAction(formData: FormData): Promise<void> {
+  const verification = await checkBotId();
+  if (verification.isBot) {
+    throw new Error("Access denied");
+  }
   const clientId = formData.get("clientId");
   if (typeof clientId !== "string" || !clientId) {
     throw new Error("revokeClientAction: clientId is required");

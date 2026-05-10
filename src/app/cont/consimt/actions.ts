@@ -1,5 +1,6 @@
 "use server";
 
+import { checkBotId } from "botid/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -16,6 +17,10 @@ import { auth } from "@/lib/auth";
 // and writes any new cookies via `nextCookies()`.
 
 export async function acceptConsentAction(formData: FormData): Promise<void> {
+  const verification = await checkBotId();
+  if (verification.isBot) {
+    throw new Error("Access denied");
+  }
   const consentCode = formData.get("consent_code");
   if (typeof consentCode !== "string" || !consentCode) {
     throw new Error("acceptConsentAction: consent_code is required");
@@ -31,6 +36,10 @@ export async function acceptConsentAction(formData: FormData): Promise<void> {
 }
 
 export async function denyConsentAction(formData: FormData): Promise<void> {
+  const verification = await checkBotId();
+  if (verification.isBot) {
+    throw new Error("Access denied");
+  }
   const consentCode = formData.get("consent_code");
   if (typeof consentCode !== "string" || !consentCode) {
     throw new Error("denyConsentAction: consent_code is required");

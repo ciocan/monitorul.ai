@@ -1,4 +1,5 @@
 import createMDX from "@next/mdx";
+import { withBotId } from "botid/next/config";
 import type { NextConfig } from "next";
 
 // Validate env at config-load time so `next dev` / `next build` fail fast on
@@ -17,4 +18,6 @@ const nextConfig: NextConfig = {
 
 const withMDX = createMDX({});
 
-export default withMDX(nextConfig);
+// `withBotId` installs proxy rewrites at obfuscated paths so ad-blockers
+// can't kneecap the BotID challenge. MDX runs first (config-closer layer).
+export default withBotId(withMDX(nextConfig));

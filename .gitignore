@@ -49,3 +49,5 @@ next-env.d.ts
 # smoke-test artifacts from playwright/chrome-devtools MCP sessions
 .playwright-mcp/
 .chrome-devtools-mcp/
+
+_session-*
