@@ -6,16 +6,9 @@ import { FRAMEWORK_BORDER, FRAMEWORK_FG } from "./framework-badge";
 
 // Renders the speech body paragraph-by-paragraph with marker spans inline.
 // Each marked segment is wrapped in a <mark> with voice-encoded styling and
-// carries an `<a>` superscript chip in the inline flow that points at the
-// matching side-panel card. (Margin chips on a desktop sidebar are noted as
-// future-work; for the v1 layout the inline superscript chips read cleanly
-// in the existing prose column without needing a second margin.)
-//
-// Click flow: a marker span's chip uses an in-page `#marker-<id>` anchor.
-// The side panel cards carry `id="marker-<id>"` and the body spans carry
-// `id="span-<id>"`. The shared scroll-flash module drops a `data-flash`
-// attribute on the target which CSS animates briefly. Same flow runs in
-// reverse from the side panel's "În context" link.
+// carries one superscript chip per marker. The client coordination layer
+// reads the data attributes here to pair-hover/select the matching side-panel
+// card and to draw the large-screen connector.
 
 export interface InlineMarkerOverlayProps {
   paragraphs: PreparedParagraph[];
@@ -23,6 +16,7 @@ export interface InlineMarkerOverlayProps {
 }
 
 export function InlineMarkerOverlay({ paragraphs, className }: InlineMarkerOverlayProps) {
+  const anchoredMarkerIds = new Set<string>();
   return (
     <div className={cn("max-w-prose space-y-4 text-base leading-relaxed text-ink-30", className)}>
       {paragraphs.map((p, idx) => (
@@ -35,34 +29,56 @@ export function InlineMarkerOverlay({ paragraphs, className }: InlineMarkerOverl
             // segment ought to agree on voice in v0.1; if not, we honor the
             // earliest one).
             const lead = seg.markers[0];
+            const ids = seg.markers.map((m) => m.id).join(" ");
+            const isSingleMarker = seg.markers.length === 1;
             return (
               <mark
                 key={`${p.absoluteStart}-${segIdx}`}
-                id={`span-${lead.id}`}
-                data-marker-id={lead.id}
+                data-marker-span=""
+                data-marker-ids={ids}
+                data-marker-primary-id={lead.id}
+                data-marker-framework={lead.framework}
                 className={cn(
                   "px-0.5 py-px text-ink-30 transition-colors",
                   voiceHighlightClass(lead.voice),
-                  "data-[flash=true]:bg-azure-3/30 data-[flash=true]:transition-none",
                 )}
               >
-                <span>{seg.text}</span>
-                {seg.markers.map((m, mIdx) => (
-                  <a
-                    key={m.id}
-                    href={`#marker-${m.id}`}
-                    aria-label={`Marcher ${m.framework} ${m.kind}`}
-                    title={`${m.framework}: ${m.kind}`}
-                    className={cn(
-                      "font-mono-meta ml-px inline-flex h-3 min-w-3 items-center justify-center align-super text-[10px] no-underline",
-                      "rounded-none border px-0.5",
-                      FRAMEWORK_FG[m.framework],
-                      FRAMEWORK_BORDER[m.framework],
-                    )}
-                  >
-                    {seg.markers.length === 1 ? "*" : String(mIdx + 1)}
-                  </a>
-                ))}
+                <span
+                  data-marker-text=""
+                  role={isSingleMarker ? "link" : "button"}
+                  tabIndex={0}
+                  aria-label={
+                    isSingleMarker
+                      ? `Selectează marcher ${lead.framework} ${lead.kind}`
+                      : `Evidențiază ${seg.markers.length} marcheri pentru acest pasaj`
+                  }
+                >
+                  {seg.text}
+                </span>
+                {seg.markers.map((m, mIdx) => {
+                  const isAnchor = !anchoredMarkerIds.has(m.id);
+                  anchoredMarkerIds.add(m.id);
+                  return (
+                    <a
+                      key={m.id}
+                      id={isAnchor ? `span-${m.id}` : undefined}
+                      href={`#marker-${m.id}`}
+                      aria-label={`Marcher ${m.framework} ${m.kind}`}
+                      title={`${m.framework}: ${m.kind}`}
+                      data-marker-chip=""
+                      data-marker-id={m.id}
+                      data-marker-framework={m.framework}
+                      className={cn(
+                        "font-mono-meta ml-px inline-flex h-3 min-w-3 items-center justify-center align-super text-[10px] no-underline",
+                        "rounded-none border px-0.5 transition-colors",
+                        FRAMEWORK_FG[m.framework],
+                        FRAMEWORK_BORDER[m.framework],
+                      )}
+                    >
+                      {seg.markers.length === 1 ? "*" : String(mIdx + 1)}
+                    </a>
+                  );
+                })}
               </mark>
             );
           })}
