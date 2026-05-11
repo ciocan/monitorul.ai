@@ -266,6 +266,37 @@ export function trackFilterApplied(props: FilterAppliedProps): void {
   capture("filter_applied", props);
 }
 
+export type FilterPanelInteractionProps = {
+  control:
+    | "panel_toggle"
+    | "help_toggle"
+    | "example_apply"
+    | "year_chip"
+    | "older_year_open"
+    | "older_year_option"
+    | "chamber_chip"
+    | "speaker_open"
+    | "speaker_clear"
+    | "speaker_option"
+    | "party_open"
+    | "party_option"
+    | "length_chip"
+    | "procedural_toggle"
+    | "sort_chip"
+    | "framework_methodology"
+    | "hawkins_chip"
+    | "vparty_chip"
+    | "dqi_chip"
+    | "voice_chip"
+    | "confidence_chip"
+    | "apply_filters";
+  action: "toggle" | "open" | "select" | "clear" | "navigate" | "apply";
+};
+
+export function trackFilterPanelInteraction(props: FilterPanelInteractionProps): void {
+  capture("filter_panel_interaction", props);
+}
+
 export type DiscourseFilterAppliedProps = {
   voice: "speaker_first_person" | "all";
   confidence: "all" | "07";

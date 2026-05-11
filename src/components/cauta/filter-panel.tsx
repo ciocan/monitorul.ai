@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { Checkbox as CheckboxPrimitive, RadioGroup as RadioGroupPrimitive } from "radix-ui";
 
+import { FilterPanelAnalytics } from "@/components/cauta/filter-panel-analytics";
 import { CautaFilterForm } from "@/components/cauta/filter-form";
 import { YearOlderPicker } from "@/components/cauta/year-older-picker";
 import { SpeakerCombobox } from "@/components/speaker-combobox";
@@ -18,7 +20,12 @@ import {
 } from "@/components/ui/select";
 import type { PartyEnumerationRow } from "@/lib/search";
 import type { SpeechSize } from "@/lib/format";
-import { type CautaSearchParams, type SortSlug, activeFilterCount } from "@/lib/search-params";
+import {
+  type CautaSearchParams,
+  type SortSlug,
+  activeFilterCount,
+  buildCautaHref,
+} from "@/lib/search-params";
 import { cn } from "@/lib/utils";
 
 // Year chips pin the last few years; "Alt an" surfaces the older archive via
@@ -55,6 +62,88 @@ const SORT_LABELS: Record<SortSlug, string> = {
   "date-desc": "Data ↓",
   "date-asc": "Data ↑",
 };
+
+const EXAMPLE_BASE_PARAMS: CautaSearchParams = {
+  q: "",
+  page: 1,
+  years: [],
+  dateFrom: "",
+  dateTo: "",
+  chamber: null,
+  speakerSlug: "",
+  partySlug: "",
+  speechSizes: [],
+  includeProcedural: false,
+  sort: "relevance",
+  hawkinsScores: [],
+  vpartyScores: [],
+  dqiLevelMin: null,
+  voiceMode: "first-person",
+  confidenceMin: null,
+};
+
+const FILTER_EXAMPLES: Array<{
+  question: string;
+  setup: string;
+  href: string;
+}> = [
+  {
+    question: "Care sunt discursurile critice la adresa Uniunii Europene din 2021?",
+    setup: "Căutare: critic la adresa Uniunii Europene. An: 2021.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, {
+      q: "critic la adresa Uniunii Europene",
+      years: [2021],
+    }),
+  },
+  {
+    question: "Discursurile lui Grindeanu cu referințe la AUR",
+    setup: "Căutare: AUR. Vorbitor: Sorin Grindeanu.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, { q: "AUR" }),
+  },
+  {
+    question: "Discursurile lui Simion cu referințe la PSD",
+    setup: "Căutare: PSD. Vorbitor: George Simion.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, { q: "PSD" }),
+  },
+  {
+    question: "Ce au spus parlamentarii AUR despre PNRR în 2022?",
+    setup: "Căutare: PNRR. Grup parlamentar: AUR. An: 2022.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, { q: "PNRR", years: [2022] }),
+  },
+  {
+    question: "Discursuri mari populiste despre pensii în 2023",
+    setup: "Căutare: pensii. An: 2023.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, {
+      q: "pensii",
+      years: [2023],
+      speechSizes: ["l", "xl"],
+      hawkinsScores: [1, 2],
+    }),
+  },
+  {
+    question: "Discursuri lungi despre justiție între 2020 și 2024",
+    setup: "Căutare: justiție. Ani: 2020, 2021, 2022, 2023, 2024. Lungime: L, XL.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, {
+      q: "justiție",
+      years: [2020, 2021, 2022, 2023, 2024],
+      speechSizes: ["l", "xl"],
+    }),
+  },
+  {
+    question: "Intervențiile procedurale ale unui parlamentar",
+    setup: "Vorbitor: numele parlamentarului. Conținut: include intervenții procedurale.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, { includeProcedural: true }),
+  },
+  {
+    question: "Discursuri populiste despre pandemie",
+    setup: "Căutare: pandemie. Populism: 1, 2. Încredere: doar ≥ 0.7.",
+    href: buildCautaHref(EXAMPLE_BASE_PARAMS, {
+      q: "pandemie",
+      hawkinsScores: [1, 2],
+      confidenceMin: 0.7,
+    }),
+  },
+];
 
 export function FilterPanel({
   params,
@@ -100,8 +189,10 @@ export function FilterPanel({
       open={isOpen}
     >
       <summary
+        data-filter-control="panel_toggle"
+        data-filter-action="toggle"
         className={cn(
-          "flex cursor-pointer list-none items-center justify-between px-1 py-3",
+          "flex cursor-pointer list-none items-center justify-between px-4 py-3",
           "label-mono text-ink-30 transition-colors hover:text-ink-16",
           "group-open/filters:py-4 group-open/filters:text-ink-16",
           "marker:hidden [&::-webkit-details-marker]:hidden",
@@ -123,11 +214,13 @@ export function FilterPanel({
           <span className="hidden group-open/filters:inline">Închide ↑</span>
         </span>
       </summary>
+      <FilterPanelAnalytics />
 
       <CautaFilterForm>
         {/* Carry the q forward — the search input itself sits above the panel,
             but the form needs `name="q"` so submission keeps the query. */}
         <input type="hidden" name="q" value={params.q} />
+        <FilterExplainer />
         <div className="grid gap-x-8 gap-y-6 px-3 py-5 md:grid-cols-2 md:px-4">
           <YearField
             yearSet={yearSet}
@@ -142,6 +235,12 @@ export function FilterPanel({
               defaultSlug={params.speakerSlug}
               defaultName={speakerName ?? ""}
             />
+            <div className="mt-1.5">
+              <FieldHelp>
+                Alege persoana care a rostit discursul. Pune numele menționate în discurs în caseta
+                de căutare, nu aici.
+              </FieldHelp>
+            </div>
           </div>
           {partyEnumeration.length > 0 ? (
             <PartyField
@@ -153,20 +252,83 @@ export function FilterPanel({
           <SpeechLengthField selected={params.speechSizes} />
           <ProceduralField checked={params.includeProcedural} />
           <SortField selected={params.sort} />
-          <HawkinsField selected={params.hawkinsScores} />
-          <VpartyField selected={params.vpartyScores} />
-          <DqiField selected={params.dqiLevelMin} />
-          <DiscourseChipsField voiceMode={params.voiceMode} confidenceMin={params.confidenceMin} />
+          <FrameworkFiltersSection
+            hawkinsScores={params.hawkinsScores}
+            vpartyScores={params.vpartyScores}
+            dqiLevelMin={params.dqiLevelMin}
+            voiceMode={params.voiceMode}
+            confidenceMin={params.confidenceMin}
+          />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-paper-91 px-3 py-3 md:px-4">
           <p className="label-mono text-ink-45">
             Apăsați Aplică pentru a căuta cu filtrele setate.
           </p>
-          <Button type="submit" size="lg" className="px-5 text-sm">
+          <Button
+            type="submit"
+            size="lg"
+            className="px-5 text-sm"
+            data-filter-control="apply_filters"
+            data-filter-action="apply"
+          >
             Aplică filtre
           </Button>
         </div>
       </CautaFilterForm>
+    </details>
+  );
+}
+
+function FilterExplainer() {
+  return (
+    <details className="group/help border-t border-paper-91 px-3 md:px-4">
+      <summary
+        data-filter-control="help_toggle"
+        data-filter-action="toggle"
+        className={cn(
+          "flex cursor-pointer list-none items-center justify-between py-3",
+          "label-mono text-ink-30 transition-colors hover:text-ink-16",
+          "marker:hidden [&::-webkit-details-marker]:hidden",
+        )}
+      >
+        <span>Cum se folosesc filtrele</span>
+        <span aria-hidden className="text-ink-45">
+          <span className="group-open/help:hidden">Arată ↓</span>
+          <span className="hidden group-open/help:inline">Ascunde ↑</span>
+        </span>
+      </summary>
+      <section className="pb-5" aria-labelledby="filter-help">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
+          <div className="max-w-prose">
+            <h2 id="filter-help" className="label-mono text-ink-30">
+              Cum se combină filtrele
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink-45">
+              Scrie subiectul sau referința în caseta de căutare. Folosește filtrele pentru limite
+              verificabile: an, cameră, vorbitor, grup parlamentar, lungime sau codări de discurs.
+            </p>
+          </div>
+          <ol className="divide-y divide-paper-91 border-y border-paper-91">
+            {FILTER_EXAMPLES.map((example) => (
+              <li key={example.question} className="grid gap-2 py-3 md:grid-cols-[1fr_auto]">
+                <div>
+                  <p className="text-sm font-medium leading-snug text-ink-16">{example.question}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-45">{example.setup}</p>
+                </div>
+                <Link
+                  href={example.href}
+                  prefetch={false}
+                  data-filter-control="example_apply"
+                  data-filter-action="navigate"
+                  className="label-mono self-start text-ink-30 underline underline-offset-4 hover:text-ink-16"
+                >
+                  Aplică
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
     </details>
   );
 }
@@ -178,6 +340,10 @@ function FieldHeader({ label, hint }: { label: string; hint?: string }) {
       {hint ? <span className="text-[0.6875rem] text-ink-45">{hint}</span> : null}
     </div>
   );
+}
+
+function FieldHelp({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs leading-relaxed text-ink-45">{children}</p>;
 }
 
 // Chip styling shared by the multi-year checkboxes and the chip-radio items.
@@ -204,6 +370,7 @@ function YearField({
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="An" hint="multi-selecție" />
+      <FieldHelp>Alege unul sau mai mulți ani ai ședințelor parlamentare.</FieldHelp>
       <div className="flex flex-wrap items-center gap-1.5">
         {chips.map((y) => (
           <YearChip key={y} year={y} checked={yearSet.has(y)} />
@@ -242,6 +409,8 @@ function YearChip({ year, checked }: { year: number; checked: boolean }) {
       value={String(year)}
       defaultChecked={checked}
       data-slot="year-chip"
+      data-filter-control="year_chip"
+      data-filter-action="select"
       className={CHIP_CLASSES}
     >
       {year}
@@ -262,6 +431,7 @@ function ChamberField({ selected }: { selected: string | null }) {
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="Cameră" />
+      <FieldHelp>Restrânge rezultatele la Camera Deputaților sau Senat.</FieldHelp>
       <RadioGroup
         key={`chamber-${selectedSlug}`}
         name="chamber"
@@ -269,7 +439,12 @@ function ChamberField({ selected }: { selected: string | null }) {
         className="flex flex-row flex-wrap gap-1.5"
       >
         {options.map((opt) => (
-          <ChipRadioItem key={opt.value || "all"} value={opt.value} label={opt.label} />
+          <ChipRadioItem
+            key={opt.value || "all"}
+            value={opt.value}
+            label={opt.label}
+            control="chamber_chip"
+          />
         ))}
       </RadioGroup>
     </fieldset>
@@ -278,9 +453,22 @@ function ChamberField({ selected }: { selected: string | null }) {
 
 // Chip-styled RadioGroup item. Replaces the default Radix circle indicator
 // with a chip that highlights via data-state. Used by Chamber + Sort.
-function ChipRadioItem({ value, label }: { value: string; label: string }) {
+function ChipRadioItem({
+  value,
+  label,
+  control,
+}: {
+  value: string;
+  label: string;
+  control: "chamber_chip" | "sort_chip" | "dqi_chip" | "voice_chip" | "confidence_chip";
+}) {
   return (
-    <RadioGroupPrimitive.Item value={value} className={CHIP_CLASSES}>
+    <RadioGroupPrimitive.Item
+      value={value}
+      className={CHIP_CLASSES}
+      data-filter-control={control}
+      data-filter-action="select"
+    >
       {label}
     </RadioGroupPrimitive.Item>
   );
@@ -301,12 +489,19 @@ function PartyField({
   return (
     <fieldset className="flex flex-col gap-1.5">
       <FieldHeader label="Grup parlamentar (atunci)" hint="la momentul discursului" />
+      <FieldHelp>
+        Filtrează grupul vorbitorului la data discursului, nu afilierea politică actuală.
+      </FieldHelp>
       {/* Radix Select doesn't allow an empty-string SelectItem value, so the
           "no selection" state is rendered as a placeholder on the trigger.
           To clear, the user removes the filter via the active chip row or
           the Resetează filtrele link. */}
       <Select key={`party-${selected}`} name="party" defaultValue={selected || undefined}>
-        <SelectTrigger className="h-10 w-full">
+        <SelectTrigger
+          className="h-10 w-full"
+          data-filter-control="party_open"
+          data-filter-action="open"
+        >
           <SelectValue placeholder="Toate grupurile" />
         </SelectTrigger>
         <SelectContent>
@@ -314,7 +509,12 @@ function PartyField({
             <SelectGroup>
               <SelectLabel>Cele mai active</SelectLabel>
               {topParties.map((p) => (
-                <SelectItem key={p.slug} value={p.slug}>
+                <SelectItem
+                  key={p.slug}
+                  value={p.slug}
+                  data-filter-control="party_option"
+                  data-filter-action="select"
+                >
                   {p.raw}
                 </SelectItem>
               ))}
@@ -324,7 +524,12 @@ function PartyField({
             <SelectGroup>
               <SelectLabel>Alte</SelectLabel>
               {otherParties.map((p) => (
-                <SelectItem key={p.slug} value={p.slug}>
+                <SelectItem
+                  key={p.slug}
+                  value={p.slug}
+                  data-filter-control="party_option"
+                  data-filter-action="select"
+                >
                   {p.raw}
                 </SelectItem>
               ))}
@@ -349,6 +554,7 @@ function SpeechLengthField({ selected }: { selected: SpeechSize[] }) {
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="Lungime discurs" hint="cuvinte" />
+      <FieldHelp>Folosește L sau XL când cauți intervenții ample, nu replici scurte.</FieldHelp>
       <div className="flex flex-wrap items-center gap-1.5">
         {SPEECH_LENGTH_OPTIONS.map((opt) => (
           <CheckboxPrimitive.Root
@@ -357,6 +563,8 @@ function SpeechLengthField({ selected }: { selected: SpeechSize[] }) {
             value={opt.value}
             defaultChecked={set.has(opt.value)}
             data-slot="length-chip"
+            data-filter-control="length_chip"
+            data-filter-action="select"
             className={CHIP_CLASSES}
           >
             {opt.label}
@@ -380,6 +588,8 @@ function ProceduralField({ checked }: { checked: boolean }) {
           name="procedural"
           value="1"
           defaultChecked={checked}
+          data-filter-control="procedural_toggle"
+          data-filter-action="select"
           className="mt-0.5"
         />
         <span className="leading-snug">
@@ -398,6 +608,9 @@ function SortField({ selected }: { selected: SortSlug }) {
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="Sortare" />
+      <FieldHelp>
+        Relevanța combină potrivirea lexicală cu cea semantică. Data schimbă ordinea cronologică.
+      </FieldHelp>
       <RadioGroup
         key={`sort-${selected}`}
         name="sort"
@@ -405,7 +618,7 @@ function SortField({ selected }: { selected: SortSlug }) {
         className="flex flex-row flex-wrap gap-1.5"
       >
         {values.map((v) => (
-          <ChipRadioItem key={v} value={v} label={SORT_LABELS[v]} />
+          <ChipRadioItem key={v} value={v} label={SORT_LABELS[v]} control="sort_chip" />
         ))}
       </RadioGroup>
     </fieldset>
@@ -415,6 +628,48 @@ function SortField({ selected }: { selected: SortSlug }) {
 // Discourse-UI Phase 5 fields. The form-level URL builder collapses each
 // `name="hawkins"` / `name="vparty"` checkbox into the comma-joined `?hawkins=`
 // / `?vparty=` URL params (same trick as the existing year chips).
+
+function FrameworkFiltersSection({
+  hawkinsScores,
+  vpartyScores,
+  dqiLevelMin,
+  voiceMode,
+  confidenceMin,
+}: {
+  hawkinsScores: Array<0 | 1 | 2>;
+  vpartyScores: Array<0 | 1 | 2>;
+  dqiLevelMin: 1 | 2 | 3 | null;
+  voiceMode: "first-person" | "all";
+  confidenceMin: number | null;
+}) {
+  return (
+    <section className="md:col-span-2 border-y border-paper-91 bg-paper-99/60 px-3 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-prose">
+          <h2 className="label-mono text-ink-30">Cadre de analiză discursivă</h2>
+          <p className="mt-2 text-xs leading-relaxed text-ink-45">
+            Aceste filtre folosesc codări aplicate discursurilor analizate. Rezultatele pot deveni
+            mai restrânse decât filtrele bibliografice de mai sus.
+          </p>
+        </div>
+        <Link
+          href="/despre/discurs#hawkins-tehnic"
+          data-filter-control="framework_methodology"
+          data-filter-action="navigate"
+          className="label-mono text-ink-30 underline underline-offset-4 hover:text-ink-16"
+        >
+          Metodologie
+        </Link>
+      </div>
+      <div className="mt-5 grid gap-x-8 gap-y-6 md:grid-cols-2">
+        <HawkinsField selected={hawkinsScores} />
+        <VpartyField selected={vpartyScores} />
+        <DqiField selected={dqiLevelMin} />
+        <DiscourseChipsField voiceMode={voiceMode} confidenceMin={confidenceMin} />
+      </div>
+    </section>
+  );
+}
 
 function HvScoreChips({
   name,
@@ -434,6 +689,8 @@ function HvScoreChips({
           value={String(v)}
           defaultChecked={set.has(v)}
           data-slot={`${name}-chip`}
+          data-filter-control={name === "hawkins" ? "hawkins_chip" : "vparty_chip"}
+          data-filter-action="select"
           className={CHIP_CLASSES}
         >
           {v}
@@ -447,6 +704,7 @@ function HawkinsField({ selected }: { selected: Array<0 | 1 | 2> }) {
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="Populism (Hawkins)" hint="0 / 1 / 2" />
+      <FieldHelp>0 înseamnă absent, 1 slab sau parțial, 2 puternic.</FieldHelp>
       <HvScoreChips name="hawkins" selected={selected} />
     </fieldset>
   );
@@ -456,6 +714,9 @@ function VpartyField({ selected }: { selected: Array<0 | 1 | 2> }) {
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="Anti-pluralism (V-Party)" hint="0 / 1 / 2" />
+      <FieldHelp>
+        Filtrează discursuri codate pentru atacuri asupra pluralismului politic.
+      </FieldHelp>
       <HvScoreChips name="vparty" selected={selected} />
     </fieldset>
   );
@@ -471,6 +732,7 @@ function DqiField({ selected }: { selected: 1 | 2 | 3 | null }) {
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="Calitate deliberativă (DQI ≥)" />
+      <FieldHelp>Pragul păstrează discursurile cu nivelul ales sau mai ridicat.</FieldHelp>
       <RadioGroup
         key={`dqi-${selected ?? "none"}`}
         name="dqi"
@@ -478,7 +740,12 @@ function DqiField({ selected }: { selected: 1 | 2 | 3 | null }) {
         className="flex flex-row flex-wrap gap-1.5"
       >
         {options.map((opt) => (
-          <ChipRadioItem key={opt.value || "all"} value={opt.value} label={opt.label} />
+          <ChipRadioItem
+            key={opt.value || "all"}
+            value={opt.value}
+            label={opt.label}
+            control="dqi_chip"
+          />
         ))}
       </RadioGroup>
     </fieldset>
@@ -495,6 +762,9 @@ function DiscourseChipsField({
   return (
     <fieldset className="flex flex-col gap-2">
       <FieldHeader label="Voce + încredere" />
+      <FieldHelp>
+        Vocea proprie exclude citate și relatări. Pragul ≥ 0.7 păstrează codări mai sigure.
+      </FieldHelp>
       <div className="flex flex-row flex-wrap gap-1.5">
         <RadioGroup
           key={`voice-${voiceMode}`}
@@ -502,8 +772,8 @@ function DiscourseChipsField({
           defaultValue={voiceMode === "all" ? "all" : ""}
           className="flex flex-row flex-wrap gap-1.5"
         >
-          <ChipRadioItem value="" label="Vocea proprie" />
-          <ChipRadioItem value="all" label="Toate vocile" />
+          <ChipRadioItem value="" label="Vocea proprie" control="voice_chip" />
+          <ChipRadioItem value="all" label="Toate vocile" control="voice_chip" />
         </RadioGroup>
         <RadioGroup
           key={`conf-${confidenceMin ?? "none"}`}
@@ -511,8 +781,8 @@ function DiscourseChipsField({
           defaultValue={confidenceMin === 0.7 ? "07" : ""}
           className="flex flex-row flex-wrap gap-1.5"
         >
-          <ChipRadioItem value="" label="Toate codările" />
-          <ChipRadioItem value="07" label="Doar ≥ 0.7" />
+          <ChipRadioItem value="" label="Toate codările" control="confidence_chip" />
+          <ChipRadioItem value="07" label="Doar ≥ 0.7" control="confidence_chip" />
         </RadioGroup>
       </div>
     </fieldset>

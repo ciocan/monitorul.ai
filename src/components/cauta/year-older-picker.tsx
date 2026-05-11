@@ -51,6 +51,8 @@ export function YearOlderPicker({ years, defaultSelected }: YearOlderPickerProps
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           type="button"
+          data-filter-control="older_year_open"
+          data-filter-action="open"
           className={cn(
             "inline-flex cursor-pointer items-center gap-1.5 border border-input px-2.5 py-1 text-xs transition-colors hover:border-ink-45",
             "outline-none focus-visible:ring-1 focus-visible:ring-ink-30",
@@ -74,6 +76,8 @@ export function YearOlderPicker({ years, defaultSelected }: YearOlderPickerProps
                     key={y}
                     value={String(y)}
                     data-checked={checked}
+                    data-filter-control="older_year_option"
+                    data-filter-action="select"
                     onSelect={() => toggle(y)}
                   >
                     {y}
