@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/ciocan/monitorul.ai/compare/monitorul-ai-v0.1.1...monitorul-ai-v0.2.0) (2026-05-11)
+
+
+### Features
+
+* Enhance search functionality with speech length filter ([5d30a98](https://github.com/ciocan/monitorul.ai/commit/5d30a98755b295bc97a9e23449286989ce1eff6c))
+* Implement filter panel explainer with examples ([3b9abbb](https://github.com/ciocan/monitorul.ai/commit/3b9abbbc9441b9c3a77bd9f62eda39c6ec6b880b))
+
 ## [0.1.1](https://github.com/ciocan/monitorul.ai/compare/monitorul-ai-v0.1.0...monitorul-ai-v0.1.1) (2026-05-10)
 
 
