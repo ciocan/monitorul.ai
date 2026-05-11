@@ -18,6 +18,14 @@
 - This app **only reads** from the `mo-*` indices. It never touches PDFs, markdown, or sidecars on disk.
 - Elasticsearch is a derived projection, not the system of record. URLs published by this app must keep resolving across re-indexes — record identity is minted upstream and stable across schema bumps.
 
+## Analytics
+
+Browser analytics is PostHog Cloud EU, initialized only by [`PostHogProvider`](../src/components/posthog-provider.tsx). `NEXT_PUBLIC_POSTHOG_KEY` is the kill switch: when unset, the SDK is not loaded and every typed tracker in [`src/lib/analytics.ts`](../src/lib/analytics.ts) is a no-op.
+
+The privacy contract is anonymous and cookieless: `persistence: "memory"`, `person_profiles: "never"`, `autocapture: false`, `capture_pageleave: false`, `disable_session_recording: true`, `disable_surveys: true`, and `respect_dnt: true`. Event payloads come from the typed catalogue in `src/lib/analytics.ts`; query text, document content, contribution amounts, IBAN values, and user identity do not go into PostHog.
+
+Web Vitals are explicitly enabled client-side with `capture_performance.web_vitals: true` because `advanced_disable_flags: true` prevents PostHog remote config from enabling project-side settings. The only emitted performance event is `$web_vitals` for CLS/FCP/INP/LCP. `web_vitals_attribution: true` enables real-user diagnostics: CLS/LCP/INP target selectors plus load, resource, script, style/layout, and interaction timing breakdowns where the browser exposes them. The attribution bundle is larger and can retain element references inside the browser's Web Vitals observers until page refresh, but PostHog strips the full `interactionTargetElement` before capture and we still do not enable autocapture, session replay, surveys, or feature flags. The required bundle is loaded through the first-party `/trace/static/wa.js` rewrite, and `prepare_external_dependency_script` rejects every other PostHog extension bundle.
+
 ## Indices (grains)
 
 Nine read-aliases under `mo-*`. Each one maps 1:1 to a URL pattern on the site.

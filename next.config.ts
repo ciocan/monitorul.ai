@@ -38,6 +38,10 @@ const nextConfig: NextConfig = {
         destination: "https://eu-assets.i.posthog.com/static/web-vitals.js",
       },
       {
+        source: "/trace/static/wa.js",
+        destination: "https://eu-assets.i.posthog.com/static/web-vitals-with-attribution.js",
+      },
+      {
         source: "/trace/static/tb.js",
         destination: "https://eu-assets.i.posthog.com/static/toolbar.js",
       },

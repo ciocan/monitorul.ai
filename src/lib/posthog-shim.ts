@@ -9,6 +9,8 @@ const POSTHOG_SCRIPT_ALIASES: Record<string, string> = {
   "posthog-surveys.js": "su.js",
   "web-vitals.js": "w.js",
   "posthog-web-vitals.js": "w.js",
+  "web-vitals-with-attribution.js": "wa.js",
+  "posthog-web-vitals-with-attribution.js": "wa.js",
   "toolbar.js": "tb.js",
   "posthog-toolbar.js": "tb.js",
   "tracing-headers.js": "h.js",
