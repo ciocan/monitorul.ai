@@ -21,6 +21,7 @@ import {
 import {
   type CautaSearchParams,
   type SortSlug,
+  activeFilterCount,
   buildCautaHref,
   parseCautaSearchParams,
 } from "@/lib/search-params";
@@ -98,15 +99,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 }
 
 function hasFilter(p: CautaSearchParams): boolean {
-  return Boolean(
-    p.years.length > 0 ||
-    p.dateFrom ||
-    p.dateTo ||
-    p.chamber ||
-    p.speakerSlug ||
-    p.partySlug ||
-    p.includeProcedural,
-  );
+  return activeFilterCount(p) > 0;
 }
 
 function suspenseKey(p: CautaSearchParams): string {
@@ -119,8 +112,14 @@ function suspenseKey(p: CautaSearchParams): string {
     p.chamber ?? "",
     p.speakerSlug,
     p.partySlug,
+    p.speechSizes.join(","),
     p.includeProcedural ? "1" : "",
     p.sort,
+    p.hawkinsScores.join(","),
+    p.vpartyScores.join(","),
+    p.dqiLevelMin ?? "",
+    p.voiceMode,
+    p.confidenceMin ?? "",
   ].join("|");
 }
 
@@ -178,6 +177,7 @@ async function SearchResults({
     dateFrom: params.dateFrom || undefined,
     dateTo: params.dateTo || undefined,
     speakerPartyRaw,
+    speechSizes: params.speechSizes.length > 0 ? params.speechSizes : undefined,
     isSubstantive: !params.includeProcedural,
     sort: params.sort,
     hawkinsScores: params.hawkinsScores.length > 0 ? params.hawkinsScores : undefined,
@@ -260,6 +260,7 @@ function listFilterDimensions(p: CautaSearchParams): SearchPerformedProps["filte
   if (p.chamber) out.push("chamber");
   if (p.speakerSlug) out.push("speaker");
   if (p.partySlug) out.push("party");
+  if (p.speechSizes.length > 0) out.push("length");
   if (p.includeProcedural) out.push("procedural");
   return out;
 }

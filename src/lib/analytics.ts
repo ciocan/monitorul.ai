@@ -69,7 +69,7 @@ export type SearchPerformedProps = {
   has_diacritics: boolean;
   filter_count: number;
   filter_dimensions: Array<
-    "year" | "chamber" | "speaker" | "party" | "procedural" | "date_from" | "date_to"
+    "year" | "chamber" | "speaker" | "party" | "length" | "procedural" | "date_from" | "date_to"
   >;
   year_count: number;
   sort: "relevance" | "date_desc" | "date_asc";
@@ -258,7 +258,7 @@ export function trackYearSelectorChanged(props: YearSelectorChangedProps): void 
 }
 
 export type FilterAppliedProps = {
-  dimension: "year" | "chamber" | "speaker" | "party" | "procedural" | "sort";
+  dimension: "year" | "chamber" | "speaker" | "party" | "length" | "procedural" | "sort";
   action: "added" | "removed" | "reset_all";
 };
 

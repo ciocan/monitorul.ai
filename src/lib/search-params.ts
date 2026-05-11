@@ -6,6 +6,7 @@
 
 import * as z from "zod";
 
+import type { SpeechSize } from "./format";
 import type { Chamber } from "./types";
 
 // Shape Next 16 hands the page: every param value is `string | string[] | undefined`.
@@ -21,6 +22,7 @@ type ChamberSlug = (typeof CHAMBER_SLUGS)[number];
 
 const SORT_VALUES = ["relevance", "date-desc", "date-asc"] as const;
 export type SortSlug = (typeof SORT_VALUES)[number];
+const SPEECH_SIZE_VALUES = ["xs", "s", "m", "l", "xl"] as const satisfies readonly SpeechSize[];
 
 // `cd` / `senat` are the URL-safe slug forms; the search layer expects the full
 // `Chamber` value (Romanian, with diacritics) because that's what's indexed.
@@ -110,6 +112,30 @@ const HV_SCORE_LIST = firstString.transform((v) => {
   return out;
 });
 
+// Comma-separated speech-size list. Same xs/s/m/l/xl vocabulary as the
+// result-row length meter; bad tokens are ignored for durable share links.
+const SPEECH_SIZE_LIST = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) => {
+    const rawValues = v === undefined ? [] : Array.isArray(v) ? v : [v];
+    const seen = new Set<SpeechSize>();
+    const out: SpeechSize[] = [];
+    for (const raw of rawValues) {
+      for (const t of raw.split(",")) {
+        const s = t.trim().toLowerCase();
+        if ((SPEECH_SIZE_VALUES as readonly string[]).includes(s)) {
+          const size = s as SpeechSize;
+          if (!seen.has(size)) {
+            seen.add(size);
+            out.push(size);
+          }
+        }
+      }
+    }
+    return out;
+  });
+
 // Single integer 1/2/3 for the DQI level threshold (level_of_justification
 // `>=`). 0 maps to "no filter" so the chip-toggle can de-select cleanly.
 const DQI_LEVEL = firstString.transform((v): 1 | 2 | 3 | null => {
@@ -142,6 +168,7 @@ const Schema = z.object({
   chamber: chamberSlug,
   speaker: slugString,
   party: slugString,
+  length: SPEECH_SIZE_LIST,
   procedural: truthyFlag,
   sort: sortSlug,
   // Discourse-UI Phase 5 chips.
@@ -168,6 +195,9 @@ export interface CautaSearchParams {
   // `speaker.person_id` (the slug equals the person_id by upstream construction).
   speakerSlug: string;
   partySlug: string;
+  // Five-bucket speech length filter, matching the xs/s/m/l/xl meter shown on
+  // every result row. Empty array = no length filter.
+  speechSizes: SpeechSize[];
   // True when the user opted to include procedural turns; default false maps
   // to the search layer's `isSubstantive: true` default.
   includeProcedural: boolean;
@@ -193,6 +223,7 @@ export function parseCautaSearchParams(raw: RawSearchParams): CautaSearchParams 
     chamber: parsed.chamber ? CHAMBER_FROM_SLUG[parsed.chamber] : null,
     speakerSlug: parsed.speaker,
     partySlug: parsed.party,
+    speechSizes: parsed.length,
     includeProcedural: parsed.procedural,
     sort: parsed.sort,
     hawkinsScores: parsed.hawkins,
@@ -228,6 +259,12 @@ export function buildCautaHref(
   if (merged.chamber) sp.set("chamber", CHAMBER_TO_SLUG[merged.chamber]);
   if (merged.speakerSlug) sp.set("speaker", merged.speakerSlug);
   if (merged.partySlug) sp.set("party", merged.partySlug);
+  if (merged.speechSizes.length > 0) {
+    sp.set(
+      "length",
+      SPEECH_SIZE_VALUES.filter((size) => merged.speechSizes.includes(size)).join(","),
+    );
+  }
   if (merged.includeProcedural) sp.set("procedural", "1");
   if (merged.sort !== "relevance") sp.set("sort", merged.sort);
   if (merged.hawkinsScores.length > 0) {
@@ -254,6 +291,7 @@ export function activeFilterCount(p: CautaSearchParams): number {
   if (p.chamber) n += 1;
   if (p.speakerSlug) n += 1;
   if (p.partySlug) n += 1;
+  if (p.speechSizes.length > 0) n += 1;
   if (p.includeProcedural) n += 1;
   if (p.hawkinsScores.length > 0) n += 1;
   if (p.vpartyScores.length > 0) n += 1;

@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { PartyEnumerationRow } from "@/lib/search";
+import type { SpeechSize } from "@/lib/format";
 import { type CautaSearchParams, type SortSlug, activeFilterCount } from "@/lib/search-params";
 import { cn } from "@/lib/utils";
 
@@ -149,6 +150,7 @@ export function FilterPanel({
               otherParties={otherParties}
             />
           ) : null}
+          <SpeechLengthField selected={params.speechSizes} />
           <ProceduralField checked={params.includeProcedural} />
           <SortField selected={params.sort} />
           <HawkinsField selected={params.hawkinsScores} />
@@ -330,6 +332,37 @@ function PartyField({
           ) : null}
         </SelectContent>
       </Select>
+    </fieldset>
+  );
+}
+
+const SPEECH_LENGTH_OPTIONS: Array<{ value: SpeechSize; label: string }> = [
+  { value: "xs", label: "XS" },
+  { value: "s", label: "S" },
+  { value: "m", label: "M" },
+  { value: "l", label: "L" },
+  { value: "xl", label: "XL" },
+];
+
+function SpeechLengthField({ selected }: { selected: SpeechSize[] }) {
+  const set = new Set(selected);
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <FieldHeader label="Lungime discurs" hint="cuvinte" />
+      <div className="flex flex-wrap items-center gap-1.5">
+        {SPEECH_LENGTH_OPTIONS.map((opt) => (
+          <CheckboxPrimitive.Root
+            key={`length-${opt.value}-${set.has(opt.value)}`}
+            name="length"
+            value={opt.value}
+            defaultChecked={set.has(opt.value)}
+            data-slot="length-chip"
+            className={CHIP_CLASSES}
+          >
+            {opt.label}
+          </CheckboxPrimitive.Root>
+        ))}
+      </div>
     </fieldset>
   );
 }
