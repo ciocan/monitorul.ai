@@ -9,6 +9,7 @@ import type {
 import { after } from "next/server";
 
 import { env } from "@/env";
+import type { SpeechSize } from "@/lib/format";
 
 import { embedQuery } from "./embed";
 import { ES_INDEX, QUERY_LOG_INDEX, esClient } from "./es-client";
@@ -1056,6 +1057,10 @@ export interface SearchSpeechesParams {
   // via `listPartyEnumeration`). Multiple raw values are OR'd because the same
   // logical group may appear under several spellings in the corpus.
   speakerPartyRaw?: string[];
+  // Five-bucket speech length filter. The index stores `text_length` in
+  // characters, so these ranges are the server-side companion to the
+  // xs/s/m/l/xl word-count meter shown in result rows.
+  speechSizes?: SpeechSize[];
   // Discourse-analysis filters (Hawkins / V-Party / DQI). Sparse: only
   // populated for substantive speeches that have been LLM-coded by
   // `monitorul-ii analyze`. Records without discourse data are excluded
@@ -1106,6 +1111,8 @@ function speechFilters(p: SearchSpeechesParams): QueryDslQueryContainer[] {
   if (p.speakerPartyRaw && p.speakerPartyRaw.length > 0) {
     filters.push({ terms: { "speaker.party_group_at_time": p.speakerPartyRaw } });
   }
+  const lengthFilter = speechSizeFilter(p.speechSizes ?? []);
+  if (lengthFilter) filters.push(lengthFilter);
   // Discourse filters. `terms` over the byte-typed score fields is the
   // cheapest possible filter (cardinality 3); the `exists` clause for
   // `discourseRequired` excludes records that haven't been coded yet.
@@ -1133,6 +1140,20 @@ function resolveSort(p: SearchSpeechesParams): SpeechSort {
   const requested = p.sort ?? "relevance";
   if (requested === "relevance" && !p.q?.trim()) return "date-desc";
   return requested;
+}
+
+function speechSizeFilter(sizes: SpeechSize[]): QueryDslQueryContainer | null {
+  if (sizes.length === 0) return null;
+  const ranges: Record<SpeechSize, QueryDslQueryContainer> = {
+    xs: { range: { text_length: { lt: 180 } } },
+    s: { range: { text_length: { gte: 180, lt: 600 } } },
+    m: { range: { text_length: { gte: 600, lt: 1800 } } },
+    l: { range: { text_length: { gte: 1800, lt: 4800 } } },
+    xl: { range: { text_length: { gte: 4800 } } },
+  };
+  const should = Array.from(new Set(sizes)).map((size) => ranges[size]);
+  if (should.length === 0) return null;
+  return { bool: { should, minimum_should_match: 1 } };
 }
 
 function dateSortClause(order: "asc" | "desc"): SearchRequest["sort"] {

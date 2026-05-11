@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { trackFilterApplied, type FilterAppliedProps } from "@/lib/analytics";
 import { formatDate } from "@/lib/format";
+import type { SpeechSize } from "@/lib/format";
 import { type CautaSearchParams, activeFilterCount, buildCautaHref } from "@/lib/search-params";
 
 interface ActiveFilterChip {
@@ -92,6 +93,24 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
     });
   }
 
+  const speechSizeLabels: Record<SpeechSize, string> = {
+    xs: "Lungime XS",
+    s: "Lungime S",
+    m: "Lungime M",
+    l: "Lungime L",
+    xl: "Lungime XL",
+  };
+  const speechSizeOrder: SpeechSize[] = ["xs", "s", "m", "l", "xl"];
+  for (const size of speechSizeOrder.filter((s) => params.speechSizes.includes(s))) {
+    chips.push({
+      label: speechSizeLabels[size],
+      href: buildCautaHref(params, {
+        speechSizes: params.speechSizes.filter((other) => other !== size),
+      }),
+      dimension: "length",
+    });
+  }
+
   // Discourse chips fall outside the v1 `FilterAppliedProps["dimension"]`
   // enum — see the `discourse_filter_applied` event for their analogue.
   for (const score of [...params.hawkinsScores].sort((a, b) => a - b)) {
@@ -172,6 +191,7 @@ export function ActiveFilters({ params, speakerLabel, partyLabel }: ActiveFilter
             chamber: null,
             speakerSlug: "",
             partySlug: "",
+            speechSizes: [],
             includeProcedural: false,
             hawkinsScores: [],
             vpartyScores: [],

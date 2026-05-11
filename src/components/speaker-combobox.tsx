@@ -135,6 +135,8 @@ export function SpeakerCombobox({
             id={inputId}
             type="button"
             aria-haspopup="listbox"
+            data-filter-control="speaker_open"
+            data-filter-action="open"
             className={cn(
               "flex flex-1 items-center justify-between gap-2 px-3 text-left text-sm text-ink-16 outline-none",
               !selectedSlug && "text-ink-45 italic",
@@ -151,6 +153,8 @@ export function SpeakerCombobox({
             <button
               type="button"
               aria-label="Elimină filtrul de vorbitor"
+              data-filter-control="speaker_clear"
+              data-filter-action="clear"
               className="grid w-9 shrink-0 place-items-center border-l border-input text-ink-45 transition-colors hover:bg-paper-96 hover:text-ink-16"
               onClick={() => {
                 setSelectedSlug("");
@@ -192,6 +196,8 @@ export function SpeakerCombobox({
                       key={h.id}
                       value={h.slug}
                       data-checked={checked}
+                      data-filter-control="speaker_option"
+                      data-filter-action="select"
                       onSelect={() => {
                         setSelectedSlug(h.slug);
                         setSelectedLabel(h.name);

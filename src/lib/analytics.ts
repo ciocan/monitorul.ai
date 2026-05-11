@@ -69,7 +69,7 @@ export type SearchPerformedProps = {
   has_diacritics: boolean;
   filter_count: number;
   filter_dimensions: Array<
-    "year" | "chamber" | "speaker" | "party" | "procedural" | "date_from" | "date_to"
+    "year" | "chamber" | "speaker" | "party" | "length" | "procedural" | "date_from" | "date_to"
   >;
   year_count: number;
   sort: "relevance" | "date_desc" | "date_asc";
@@ -258,12 +258,43 @@ export function trackYearSelectorChanged(props: YearSelectorChangedProps): void 
 }
 
 export type FilterAppliedProps = {
-  dimension: "year" | "chamber" | "speaker" | "party" | "procedural" | "sort";
+  dimension: "year" | "chamber" | "speaker" | "party" | "length" | "procedural" | "sort";
   action: "added" | "removed" | "reset_all";
 };
 
 export function trackFilterApplied(props: FilterAppliedProps): void {
   capture("filter_applied", props);
+}
+
+export type FilterPanelInteractionProps = {
+  control:
+    | "panel_toggle"
+    | "help_toggle"
+    | "example_apply"
+    | "year_chip"
+    | "older_year_open"
+    | "older_year_option"
+    | "chamber_chip"
+    | "speaker_open"
+    | "speaker_clear"
+    | "speaker_option"
+    | "party_open"
+    | "party_option"
+    | "length_chip"
+    | "procedural_toggle"
+    | "sort_chip"
+    | "framework_methodology"
+    | "hawkins_chip"
+    | "vparty_chip"
+    | "dqi_chip"
+    | "voice_chip"
+    | "confidence_chip"
+    | "apply_filters";
+  action: "toggle" | "open" | "select" | "clear" | "navigate" | "apply";
+};
+
+export function trackFilterPanelInteraction(props: FilterPanelInteractionProps): void {
+  capture("filter_panel_interaction", props);
 }
 
 export type DiscourseFilterAppliedProps = {

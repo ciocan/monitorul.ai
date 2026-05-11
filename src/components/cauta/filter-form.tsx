@@ -59,6 +59,17 @@ export function CautaFilterForm({ children }: { children: React.ReactNode }) {
           }
         }
 
+        const lengthOrder = ["xs", "s", "m", "l", "xl"];
+        const lengthSet = new Set<string>();
+        for (const v of fd.getAll("length")) {
+          const s = String(v).trim().toLowerCase();
+          if (lengthOrder.includes(s)) lengthSet.add(s);
+        }
+        fd.delete("length");
+        if (lengthSet.size > 0) {
+          sp.set("length", lengthOrder.filter((size) => lengthSet.has(size)).join(","));
+        }
+
         for (const [k, v] of fd.entries()) {
           if (typeof v !== "string") continue;
           const trimmed = v.trim();
@@ -93,6 +104,7 @@ const TRACKED_DIMENSIONS: Array<{
   { dimension: "chamber", param: "chamber" },
   { dimension: "speaker", param: "speaker" },
   { dimension: "party", param: "party" },
+  { dimension: "length", param: "length" },
   { dimension: "procedural", param: "procedural" },
   { dimension: "sort", param: "sort" },
 ];
