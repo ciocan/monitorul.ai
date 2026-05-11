@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/ciocan/monitorul.ai/compare/monitorul-ai-v0.2.0...monitorul-ai-v0.3.0) (2026-05-11)
+
+
+### Features
+
+* Update PostHog analytics configuration with web vitals ([e1f1cb6](https://github.com/ciocan/monitorul.ai/commit/e1f1cb61c90e06221f04243cd43ceff9c874afda))
+* Update PostHog analytics configuration with web vitals ([0cc5b6d](https://github.com/ciocan/monitorul.ai/commit/0cc5b6d55a2a357dba0780b64ba7fe30a18da85a))
+
 ## [0.2.0](https://github.com/ciocan/monitorul.ai/compare/monitorul-ai-v0.1.1...monitorul-ai-v0.2.0) (2026-05-11)
 
 
