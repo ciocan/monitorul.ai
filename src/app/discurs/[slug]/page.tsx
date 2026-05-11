@@ -7,6 +7,7 @@ import { SpeechViewedTracker } from "@/components/analytics/page-trackers";
 import { Dateline } from "@/components/dateline";
 import { DiscourseSidePanel } from "@/components/discourse/discourse-side-panel";
 import { InlineMarkerOverlay } from "@/components/discourse/inline-marker-overlay";
+import { MarkerLinkCoordinator } from "@/components/discourse/marker-link-coordinator";
 import { SpeechDiscourseSummary } from "@/components/discourse/speech-discourse-summary";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { env } from "@/env";
@@ -220,7 +221,7 @@ export default async function SpeechPage({ params, searchParams }: PageProps) {
           Discurs
         </h2>
         {discourse && speech.text ? (
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <MarkerLinkCoordinator className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
             <InlineMarkerOverlay paragraphs={overlay.paragraphs} />
             <DiscourseSidePanel
               markers={overlay.visibleMarkers}
@@ -229,7 +230,7 @@ export default async function SpeechPage({ params, searchParams }: PageProps) {
               searchParams={sp}
               params={discourseParams}
             />
-          </div>
+          </MarkerLinkCoordinator>
         ) : speech.text ? (
           <>
             <div className="max-w-prose space-y-4 text-base leading-relaxed text-ink-30">

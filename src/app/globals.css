@@ -198,6 +198,47 @@
   .dark mark {
     background-color: oklch(0.42 0.07 88);
   }
+  [data-marker-framework="hawkins"],
+  [data-marker-framework="vparty"] {
+    --marker-link-color: var(--alert-civic);
+    --marker-link-tint: color-mix(in oklch, var(--alert-civic) 14%, transparent);
+  }
+  [data-marker-framework="dqi"] {
+    --marker-link-color: var(--azure-3);
+    --marker-link-tint: color-mix(in oklch, var(--azure-3) 14%, transparent);
+  }
+  [data-marker-span] {
+    box-shadow: 0 0 0 1px transparent;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+  [data-marker-text] {
+    cursor: pointer;
+  }
+  [data-marker-span][data-marker-active="true"],
+  [data-marker-span][data-marker-preview="true"] {
+    background-color: var(--marker-link-tint);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--marker-link-color) 45%, transparent);
+  }
+  [data-marker-chip][data-marker-active="true"],
+  [data-marker-chip][data-marker-preview="true"] {
+    border-color: var(--marker-link-color);
+    background-color: var(--marker-link-color);
+    color: var(--paper-99);
+  }
+  [data-marker-card][data-marker-active="true"],
+  [data-marker-card][data-marker-preview="true"] {
+    border-color: var(--marker-link-color);
+    background-color: var(--marker-link-tint);
+    box-shadow: inset 3px 0 0 var(--marker-link-color);
+  }
+  [data-marker-chip]:focus-visible,
+  [data-marker-context-link]:focus-visible,
+  [data-marker-card]:focus-visible,
+  [data-marker-text]:focus-visible {
+    outline: 2px solid var(--marker-link-color);
+    outline-offset: 2px;
+  }
   /* Inline pending hint for nav <Link>s that wrap a <NavStatusDot />.
      Reserves a 6px slot at all times so toggling visibility never causes
      layout shift. The 100ms animation-delay means fast prefetched

@@ -7,8 +7,8 @@ import { FrameworkBadge } from "./framework-badge";
 
 // One side-panel card per marker. Carries the framework + kind chip, voice
 // + confidence summary, the LLM-generated short rationale, and the verbatim
-// evidence excerpt. Click the "În context" link → flash the matching span
-// in the body via the shared `?flash` URL routing handled by `<ScrollFlash>`.
+// evidence excerpt. The data attributes are consumed by the client
+// coordination layer that pairs cards with inline evidence spans.
 
 export interface MarkerCardProps {
   marker: MarkerView;
@@ -17,13 +17,16 @@ export interface MarkerCardProps {
 
 export function MarkerCard({ marker, className }: MarkerCardProps) {
   return (
-    <article
+    <a
       id={`marker-${marker.id}`}
+      href={`#span-${marker.id}`}
+      data-marker-card=""
       data-marker-id={marker.id}
+      data-marker-framework={marker.framework}
+      aria-label={`Marcher ${marker.framework} ${marker.kind}: vezi în context`}
       className={cn(
-        "relative space-y-2 border border-paper-91 bg-paper-99 p-3",
+        "relative block space-y-2 border border-paper-91 bg-paper-99 p-3 no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
         "scroll-mt-32",
-        "data-[flash=true]:border-azure-3 data-[flash=true]:transition-none",
         className,
       )}
     >
@@ -66,13 +69,15 @@ export function MarkerCard({ marker, className }: MarkerCardProps) {
         </p>
       ) : null}
       <p>
-        <a
-          href={`#span-${marker.id}`}
+        <span
+          data-marker-context-link=""
+          data-marker-id={marker.id}
+          data-marker-framework={marker.framework}
           className="label-mono text-ink-45 underline decoration-paper-91 underline-offset-4 hover:text-ink-30 hover:decoration-ink-30"
         >
           În context ↑
-        </a>
+        </span>
       </p>
-    </article>
+    </a>
   );
 }

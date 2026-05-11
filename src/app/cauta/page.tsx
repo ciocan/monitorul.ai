@@ -10,6 +10,7 @@ import { SiteSearch } from "@/components/site-search";
 import { SpeechLengthMeter } from "@/components/speech-length-meter";
 import { hasDiacritics } from "@/lib/analytics";
 import type { SearchPerformedProps } from "@/lib/analytics";
+import { frameworkLabel } from "@/lib/discourse-copy";
 import { formatCount, formatDate, speechWordCount } from "@/lib/format";
 import {
   type PartyEnumerationRow,
@@ -25,7 +26,8 @@ import {
   buildCautaHref,
   parseCautaSearchParams,
 } from "@/lib/search-params";
-import type { MoSpeech } from "@/lib/types";
+import type { DiscourseFramework, MoSpeech } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // Per docs/elasticsearch-indexing.md §Q7: search-results pages are
 // `noindex, follow`. They're not citable archive content; the records they
@@ -310,6 +312,7 @@ function SpeechHit({
     .filter(Boolean)
     .join(" · ");
   const hasDiscourseMarkers = Boolean(hit.enrichments?.discourse);
+  const discourseMarkers = resultDiscourseMarkers(hit);
   return (
     <li
       className="px-1 py-6"
@@ -319,7 +322,10 @@ function SpeechHit({
       data-result-has-discourse={hasDiscourseMarkers ? "1" : "0"}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        {chamberMeta ? <p className="label-mono text-ink-45">{chamberMeta}</p> : <span />}
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {chamberMeta ? <p className="label-mono text-ink-45">{chamberMeta}</p> : null}
+          <DiscourseResultMarkers markers={discourseMarkers} />
+        </div>
         <div className="flex items-baseline gap-4">
           {sessionDate ? (
             <time
@@ -395,6 +401,105 @@ function SpeechHit({
         </p>
       ) : null}
     </li>
+  );
+}
+
+type ResultDiscourseMarker = {
+  framework: Exclude<DiscourseFramework, "voice">;
+  label: string;
+  title: string;
+  strength: 0 | 1 | 2 | 3;
+};
+
+const RESULT_MARKER_CLASSES: Record<
+  ResultDiscourseMarker["framework"],
+  Record<ResultDiscourseMarker["strength"], string>
+> = {
+  hawkins: {
+    0: "border-paper-91 bg-paper-99 text-ink-45",
+    1: "border-alert-civic/45 bg-alert-civic/8 text-alert-civic",
+    2: "border-alert-civic/70 bg-alert-civic/12 text-alert-civic",
+    3: "border-alert-civic/70 bg-alert-civic/12 text-alert-civic",
+  },
+  vparty: {
+    0: "border-paper-91 bg-paper-99 text-ink-45",
+    1: "border-alert-civic/45 bg-alert-civic/8 text-alert-civic",
+    2: "border-alert-civic/70 bg-alert-civic/12 text-alert-civic",
+    3: "border-alert-civic/70 bg-alert-civic/12 text-alert-civic",
+  },
+  dqi: {
+    0: "border-paper-91 bg-paper-99 text-ink-45",
+    1: "border-azure-3/35 bg-azure-3/8 text-azure-3",
+    2: "border-azure-3/55 bg-azure-3/10 text-azure-3",
+    3: "border-azure-3/70 bg-azure-3/12 text-azure-3",
+  },
+};
+
+function resultDiscourseMarkers(hit: MoSpeech): ResultDiscourseMarker[] {
+  const d = hit.enrichments?.discourse;
+  if (!d) return [];
+  const markers: ResultDiscourseMarker[] = [];
+
+  if (typeof d.hawkins?.score === "number") {
+    markers.push({
+      framework: "hawkins",
+      label: `H${d.hawkins.score}`,
+      title: resultFrameworkTitle("hawkins", `scor ${d.hawkins.score}/2`, d.hawkins.marker_count),
+      strength: d.hawkins.score,
+    });
+  }
+
+  if (typeof d.vparty?.score === "number") {
+    markers.push({
+      framework: "vparty",
+      label: `V${d.vparty.score}`,
+      title: resultFrameworkTitle("vparty", `scor ${d.vparty.score}/2`, d.vparty.marker_count),
+      strength: d.vparty.score,
+    });
+  }
+
+  if (typeof d.dqi?.level_of_justification === "number") {
+    markers.push({
+      framework: "dqi",
+      label: `DQI L${d.dqi.level_of_justification}`,
+      title: resultFrameworkTitle("dqi", `nivel ${d.dqi.level_of_justification}/3`),
+      strength: d.dqi.level_of_justification,
+    });
+  }
+
+  return markers;
+}
+
+function resultFrameworkTitle(
+  framework: ResultDiscourseMarker["framework"],
+  value: string,
+  markerCount?: number,
+): string {
+  const count =
+    typeof markerCount === "number"
+      ? ` · ${markerCount} ${markerCount === 1 ? "marcher" : "marcheri"}`
+      : "";
+  return `${frameworkLabel(framework, true)}: ${value}${count}`;
+}
+
+function DiscourseResultMarkers({ markers }: { markers: ResultDiscourseMarker[] }) {
+  if (markers.length === 0) return null;
+  return (
+    <ul className="flex flex-wrap items-center gap-1" aria-label="Codări de discurs">
+      {markers.map((marker) => (
+        <li key={marker.framework}>
+          <span
+            className={cn(
+              "font-mono-meta inline-flex h-4 items-center border px-1 text-[10px] leading-none tracking-[0.04em]",
+              RESULT_MARKER_CLASSES[marker.framework][marker.strength],
+            )}
+            title={marker.title}
+          >
+            {marker.label}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

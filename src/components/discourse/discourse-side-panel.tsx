@@ -48,7 +48,12 @@ export function DiscourseSidePanel({
   const filteredOut = totalMarkers - visibleCount;
   return (
     <aside
-      className={cn("border border-paper-91 bg-paper-96/40 p-4", "lg:sticky lg:top-24", className)}
+      className={cn(
+        "border border-paper-91 bg-paper-96/40 p-4",
+        "lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:overscroll-contain",
+        className,
+      )}
+      data-marker-rail=""
       aria-labelledby="discourse-panel-title"
     >
       <header className="mb-3 space-y-2">
