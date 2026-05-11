@@ -26,6 +26,7 @@ Folosim **PostHog** (PostHog Inc., găzduit în UE — Frankfurt, Germania) pent
 
 - **evenimente anonime de pagină** (URL-ul vizitat, referrer-ul, momentul, țara de origine derivată din IP — IP-ul **nu** se stochează);
 - **evenimente custom explicite** definite manual în cod (de exemplu „căutare efectuată” cu lungimea interogării și filtrele active, „control de filtru apăsat” doar ca tip de control, „rezultat clicat”, „PDF descărcat”) — fără conținutul interogării și fără atribuirea la un utilizator;
+- **Web Vitals cu diagnostic de atribuire** (`$web_vitals`: FCP, LCP, INP, CLS) pentru performanța reală a paginilor — valorile metricilor, URL-ul paginii, selectorul elementului relevant pentru LCP/CLS/INP atunci când browser-ul îl raportează și defalcări de timp/resurse pentru încărcare și interacțiuni;
 - **metadate de browser** (limba, fusul orar, dimensiunea ecranului, tipul de dispozitiv — folosite pentru optimizarea afișării și diagnosticarea regresiilor).
 
 **Ce NU colectează:**
@@ -33,6 +34,7 @@ Folosim **PostHog** (PostHog Inc., găzduit în UE — Frankfurt, Germania) pent
 - **fără cookie-uri sau localStorage** — `persistence: 'memory'`, deci starea PostHog dispare la închiderea tabului, fără urmărire între sesiuni;
 - **fără identificare individuală** — `person_profiles: 'never'`, deci PostHog nu creează niciun profil persistent al vizitatorului. Chiar și utilizatorii autentificați (MCP) sunt complet anonimi în datele de analiză;
 - **fără autocapture** — `autocapture: false`, deci PostHog nu înregistrează automat clicuri, scroll-uri sau interacțiuni pe care nu le-am declarat explicit în cod;
+- **fără DOM complet sau capturi vizuale** — `web_vitals_attribution: true` poate trimite selectori de element și defalcări de timing pentru diagnostic, dar nu trimitem noduri DOM complete, textul paginii, capturi de ecran sau înregistrări ale sesiunii;
 - **fără session recordings** — `disable_session_recording: true`, deci nu există nicio reproducere video a vizitelor tale;
 - **fără IP** — IP-ul este anonimizat la nivel de proiect PostHog (`process_person_profile: false` + IP truncation activă).
 
@@ -44,7 +46,7 @@ Toate aceste setări sunt verificabile în codul-sursă al site-ului ([github.co
 
 **Perioada de păstrare:** 12 luni pentru evenimente individuale; agregatele rezultate (rapoarte, dashboard-uri) sunt permanente. Nu există date individuale după 12 luni — doar conturi de evenimente.
 
-**Cum poți opta să nu fii înregistrat:** activează **Do Not Track** în browser-ul tău (Firefox: `about:preferences#privacy`; Brave / Chromium: setări de confidențialitate); vom respecta semnalul DNT și nu vom emite niciun eveniment PostHog. Alternativ, blochează domeniul `eu.i.posthog.com` în browser sau printr-un blocant de reclame — site-ul funcționează identic.
+**Cum poți opta să nu fii înregistrat:** activează **Do Not Track** în browser-ul tău (Firefox: `about:preferences#privacy`; Brave / Chromium: setări de confidențialitate); vom respecta semnalul DNT și nu vom emite niciun eveniment PostHog. Alternativ, blochează endpointul PostHog (`/trace` pe site sau `eu.i.posthog.com` când nu trece prin proxy) în browser sau printr-un blocant de reclame — site-ul funcționează identic.
 
 **Politica PostHog:** [posthog.com/privacy](https://posthog.com/privacy). DPA: [posthog.com/dpa](https://posthog.com/dpa).
 

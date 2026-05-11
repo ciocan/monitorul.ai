@@ -51,10 +51,14 @@ S3_REGION=auto
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 
+NEXT_PUBLIC_POSTHOG_KEY=                  # optional; unset disables browser analytics entirely
+NEXT_PUBLIC_POSTHOG_HOST=/trace           # first-party PostHog proxy; use https://eu.i.posthog.com without proxy
 NEXT_PUBLIC_SITE_URL=https://monitorul.ai
 ```
 
 Validated at startup by [`src/env.ts`](./src/env.ts) (via `@t3-oss/env-nextjs` + Zod). `next dev` and `next build` fail fast on missing or malformed values. Set `SKIP_ENV_VALIDATION=1` to bypass (useful for lint-only CI). The `monitorul_reader` key and the local embedder both come from the [`monitorul-ii`](https://github.com/ciocan/monitorul-ii) repo; `NEXT_PUBLIC_SITE_URL` controls absolute canonical URLs and JSON-LD `@id` values.
+
+PostHog analytics is optional and anonymous/cookieless. When the key is set, custom events, `$pageview`, and `$web_vitals` (FCP, LCP, INP, CLS) are sent from [`src/components/posthog-provider.tsx`](./src/components/posthog-provider.tsx); Do Not Track is respected, person profiles, autocapture, surveys, and session replay stay disabled. Web Vitals attribution is enabled so poor samples include element selectors and timing/resource breakdowns.
 
 Auth + DB env vars (`DATABASE_URL`, `DATABASE_DIRECT_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) have their own provisioning recipe in [`docs/auth-setup.md`](./docs/auth-setup.md) — Neon project + branches, Google Cloud Console consent screen + two OAuth clients, Vercel env-var matrix, plus common-pitfall debugging.
 

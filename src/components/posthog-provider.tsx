@@ -69,6 +69,17 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
         capture_pageview: "history_change",
         capture_pageleave: false,
 
+        // Web Vitals are performance-only `$web_vitals` events, separate
+        // from autocapture. Remote config is disabled below, so the PostHog
+        // project setting cannot enable this for us; keep the local opt-in
+        // explicit. Attribution is intentionally on so poor CLS/LCP/INP
+        // samples include element targets and timing breakdowns.
+        capture_performance: {
+          web_vitals: true,
+          web_vitals_allowed_metrics: ["CLS", "FCP", "INP", "LCP"],
+          web_vitals_attribution: true,
+        },
+
         // No DOM recordings under any circumstance.
         disable_session_recording: true,
 
@@ -94,12 +105,32 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
         disable_compression: env.NODE_ENV === "development",
 
         // Skip the /decide endpoint (feature-flag + autocapture-config
-        // bootstrap) and the lazy-loaded recording / toolbar / surveys
-        // modules. We use none of those features; their network + DOM
-        // side-effects were causing Turbopack to loop Fast Refresh in dev.
+        // bootstrap). We explicitly configure the local-only features above
+        // because remote config is disabled.
         advanced_disable_flags: true,
         advanced_disable_feature_flags: true,
-        disable_external_dependency_loading: true,
+
+        // Allow PostHog's extension loader only so the explicitly enabled
+        // Web Vitals bundle can load. Everything else is rejected here even
+        // if a URL hash or future SDK default attempts to request it.
+        disable_external_dependency_loading: false,
+        prepare_external_dependency_script: (script) => {
+          const src = script.getAttribute("src") ?? "";
+          try {
+            const path = new URL(src, window.location.href).pathname;
+            if (
+              path.endsWith("/static/web-vitals.js") ||
+              path.endsWith("/static/web-vitals-with-attribution.js") ||
+              path.endsWith("/static/w.js") ||
+              path.endsWith("/static/wa.js")
+            ) {
+              return script;
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        },
 
         // Defense in depth — autocapture is off but masking is cheap.
         mask_all_text: false,
