@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const dest = new URL(
     req.nextUrl.pathname + req.nextUrl.search,
     "https://integritate.monitorul.ai",
