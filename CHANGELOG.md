@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/ciocan/monitorul.ai/compare/monitorul-ai-v0.3.0...monitorul-ai-v0.4.0) (2026-07-20)
+
+
+### Features
+
+* Add new route rewrites for Integritate service ([3da7627](https://github.com/ciocan/monitorul.ai/commit/3da7627234da7422de01a3afd039342204712ae9))
+* Add new route rewrites for Integritate service ([d5c839e](https://github.com/ciocan/monitorul.ai/commit/d5c839ee21a6f99c2ce8b85f774db65501df6d14))
+
 ## [0.3.0](https://github.com/ciocan/monitorul.ai/compare/monitorul-ai-v0.2.0...monitorul-ai-v0.3.0) (2026-05-11)
 
 
