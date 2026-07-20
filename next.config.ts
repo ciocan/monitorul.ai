@@ -61,14 +61,6 @@ const nextConfig: NextConfig = {
         source: "/trace/:path*",
         destination: "https://eu.i.posthog.com/:path*",
       },
-      {
-        source: "/integritate",
-        destination: "https://integritate.monitorul.ai/integritate",
-      },
-      {
-        source: "/integritate/:path*",
-        destination: "https://integritate.monitorul.ai/integritate/:path*",
-      },
     ];
   },
 };
